@@ -102,6 +102,8 @@ def test_iter_records_paginates_until_exhausted():
     assert first_params["limit"] == 2
     assert first_params["detail"] == "full"
     assert second_params["start"] == 2
+    # Every request must carry the bounded (connect, read) timeout.
+    assert c._http.get.call_args_list[0].kwargs["timeout"] == FlexiBeeClient._HTTP_TIMEOUT
 
 
 def test_list_evidences_returns_path_name_pairs():
@@ -134,6 +136,19 @@ def test_iter_records_wraps_http_error():
         assert "faktura-vydana" in str(e)
     else:
         raise AssertionError("expected FlexiBeeClientError")
+
+
+def test_iter_records_wraps_timeout():
+    import requests
+
+    c = _client()
+    c._http.get = mock.Mock(side_effect=requests.Timeout("Read timed out"))
+    try:
+        list(c.iter_records("adresar", wql=None))
+    except FlexiBeeClientError as e:
+        assert "adresar" in str(e)
+    else:
+        raise AssertionError("expected FlexiBeeClientError on timeout")
 
 
 def test_test_connection_raises_on_http_error():

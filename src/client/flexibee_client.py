@@ -20,6 +20,12 @@ class FlexiBeeClient:
     The `?filter=` query parameter is silently ignored by the API and must never be used.
     """
 
+    # (connect, read) timeout in seconds. Bounds each HTTP attempt so an
+    # unreachable or stalled host fails fast with a clear error instead of
+    # hanging the whole job (e.g. when the instance is not reachable from the
+    # run environment's network).
+    _HTTP_TIMEOUT = (10, 60)
+
     def __init__(
         self,
         base_url: str,
@@ -36,7 +42,7 @@ class FlexiBeeClient:
         self._http = HttpClient(
             base_url=f"{self.base_url}/",
             auth=(self.username, self.password),
-            max_retries=5,
+            max_retries=3,
             backoff_factor=0.5,
             status_forcelist=(500, 502, 503, 504),
         )
@@ -109,7 +115,9 @@ class FlexiBeeClient:
             if first:
                 params["add-row-count"] = "true"
             try:
-                data = self._http.get(endpoint_path=endpoint, params=params, verify=self.ssl_verify)
+                data = self._http.get(
+                    endpoint_path=endpoint, params=params, verify=self.ssl_verify, timeout=self._HTTP_TIMEOUT
+                )
             except requests.RequestException as exc:
                 raise FlexiBeeClientError(f"Request to evidence '{evidence}' failed: {exc}") from exc
             body = data.get("winstrom", {})
@@ -127,7 +135,7 @@ class FlexiBeeClient:
         """Return (evidencePath, evidenceName) pairs for the connected company."""
         endpoint = f"c/{self.company}/evidence-list.json"
         try:
-            data = self._http.get(endpoint_path=endpoint, verify=self.ssl_verify)
+            data = self._http.get(endpoint_path=endpoint, verify=self.ssl_verify, timeout=self._HTTP_TIMEOUT)
         except requests.RequestException as exc:
             raise FlexiBeeClientError(f"Could not list evidences: {exc}") from exc
         evidences = data.get("evidences", {}).get("evidence", [])
