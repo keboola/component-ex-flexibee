@@ -1,26 +1,34 @@
 import logging
 
 from keboola.component.exceptions import UserException
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class Configuration(BaseModel):
-    print_hello: bool
-    api_token: str = Field(alias="#api_token")
-    debug: bool = False
+    """Merged root + row configuration the component receives at runtime."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # --- connection (root config) ---
+    base_url: str
+    company: str
+    username: str
+    password: str = Field(alias="#password")
+    ssl_verify: bool = True
+
+    # --- evidence (row config) ---
+    evidence: str
+    date_from: str = ""
+    date_to: str = ""
+    detail: str = "full"
+    custom_fields: str = ""
+    custom_filter: str = ""
+    limit: int = 200
 
     def __init__(self, **data):
         try:
             super().__init__(**data)
         except ValidationError as e:
-            error_messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
-            raise UserException(f"Validation Error: {', '.join(error_messages)}")
-
-        if self.debug:
-            logging.debug("Component will run in Debug mode")
-
-    @field_validator("api_token")
-    def token_must_be_uppercase(cls, v):
-        if not v.isupper():
-            raise UserException("API token must be uppercase")
-        return v
+            messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
+            raise UserException(f"Validation Error: {', '.join(messages)}")
+        logging.debug("Configuration loaded for evidence '%s'", self.evidence)
