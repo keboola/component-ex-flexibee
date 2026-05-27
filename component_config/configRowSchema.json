@@ -1,1 +1,63 @@
-{}
+{
+  "type": "object",
+  "title": "Evidence",
+  "required": ["evidence"],
+  "properties": {
+    "evidence": {
+      "type": "string",
+      "title": "Evidence type",
+      "description": "ABRA Flexi evidence path to extract",
+      "format": "select",
+      "options": {
+        "async": {
+          "label": "Re-load evidence types",
+          "action": "listEvidences",
+          "autoload": ["parameters.base_url", "parameters.company", "parameters.username"]
+        }
+      },
+      "propertyOrder": 1
+    },
+    "date_from": {
+      "type": "string",
+      "title": "Date from (lastUpdate)",
+      "description": "Relative ('5 days ago') or absolute ('2026-01-01'). Empty = full history. Enables incremental upsert.",
+      "propertyOrder": 2
+    },
+    "date_to": {
+      "type": "string",
+      "title": "Date to (lastUpdate)",
+      "description": "Relative or absolute. Empty = now.",
+      "propertyOrder": 3
+    },
+    "detail": {
+      "type": "string",
+      "title": "Detail level",
+      "enum": ["full", "summary", "custom"],
+      "default": "full",
+      "propertyOrder": 4
+    },
+    "custom_fields": {
+      "type": "string",
+      "title": "Custom fields",
+      "description": "Comma-separated field list (used when Detail level = custom)",
+      "propertyOrder": 5,
+      "options": {
+        "dependencies": {
+          "detail": "custom"
+        }
+      }
+    },
+    "custom_filter": {
+      "type": "string",
+      "title": "Advanced WQL filter",
+      "description": "Optional raw ABRA Flexi WQL, AND-ed into the lastUpdate window. Use gt/lt, full ISO timestamps.",
+      "propertyOrder": 6
+    },
+    "limit": {
+      "type": "integer",
+      "title": "Page size",
+      "default": 200,
+      "propertyOrder": 7
+    }
+  }
+}
