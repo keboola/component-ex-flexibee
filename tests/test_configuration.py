@@ -1,11 +1,8 @@
-import sys
-from pathlib import Path
+from datetime import datetime
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
-from configuration import Configuration  # noqa: E402
+from configuration import Configuration
 
 BASE = {
     "base_url": "https://demo.flexibee.eu",
@@ -39,9 +36,6 @@ def test_missing_required_field_raises_user_exception():
 def test_password_alias_mapping():
     cfg = Configuration(**BASE)
     assert cfg.password == "winstrom"
-
-
-from datetime import datetime  # noqa: E402
 
 
 def test_resolve_window_both_empty_returns_none():

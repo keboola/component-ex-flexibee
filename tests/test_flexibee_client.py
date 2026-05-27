@@ -1,9 +1,7 @@
-import sys
-from pathlib import Path
+from datetime import datetime
+from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
-from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError  # noqa: E402
+from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
 
 
 def _client():
@@ -30,9 +28,6 @@ def test_build_evidence_path_with_filter_goes_in_path_not_query():
     # Filter MUST be inside parentheses in the path, NOT a query string.
     assert path == "c/demo/faktura-vydana/(lastUpdate gt '2026-05-01T00:00:00+00:00').json"
     assert "?filter=" not in path
-
-
-from datetime import datetime  # noqa: E402
 
 
 def test_build_lastupdate_wql_both_bounds():
@@ -80,9 +75,6 @@ def test_flatten_record_list_values_json_encoded():
     flat = c.flatten_record(record)
     assert flat["id"] == "2"
     assert flat["external-ids"] == '["ext:DATIVERY:abc"]'
-
-
-from unittest import mock  # noqa: E402
 
 
 def _winstrom_page(evidence, records, row_count=None):
