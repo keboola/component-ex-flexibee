@@ -1,0 +1,99 @@
+[
+  {
+    "name": "01_testConnection",
+    "description": "Test connection with valid public-demo credentials",
+    "config": {
+      "action": "testConnection",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true
+      }
+    }
+  },
+  {
+    "name": "02_listEvidences",
+    "description": "List evidence types for the UI dropdown",
+    "config": {
+      "action": "listEvidences",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true
+      }
+    }
+  },
+  {
+    "name": "03_run_incremental",
+    "description": "Incremental run with a narrow lastUpdate window on faktura-vydana",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "faktura-vydana",
+        "date_from": "2026-05-27",
+        "date_to": "2026-05-28",
+        "detail": "full",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "04_run_full_load",
+    "description": "Full load (no date window) of the small mena evidence; incremental=false",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "mena",
+        "detail": "full",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "10_run_bad_credentials",
+    "description": "Run with wrong password -> 401 mapped to UserException, exit code 1",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "definitely-wrong-password",
+        "ssl_verify": true,
+        "evidence": "faktura-vydana",
+        "detail": "full",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "11_run_missing_password",
+    "description": "Run without #password -> config validation fails, exit code 1",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "ssl_verify": true,
+        "evidence": "faktura-vydana",
+        "detail": "full",
+        "limit": 200
+      }
+    }
+  }
+]

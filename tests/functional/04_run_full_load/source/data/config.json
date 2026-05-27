@@ -1,0 +1,13 @@
+{
+  "action": "run",
+  "parameters": {
+    "base_url": "https://demo.flexibee.eu",
+    "company": "demo",
+    "username": "winstrom",
+    "#password": "winstrom",
+    "ssl_verify": true,
+    "evidence": "mena",
+    "detail": "full",
+    "limit": 200
+  }
+}

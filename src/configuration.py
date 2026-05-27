@@ -19,7 +19,9 @@ class Configuration(BaseModel):
     ssl_verify: bool = True
 
     # --- evidence (row config) ---
-    evidence: str
+    # Optional so sync actions (testConnection, listEvidences) can run at config
+    # time before a row's evidence is selected. run() guards that it is set.
+    evidence: str = ""
     date_from: str = ""
     date_to: str = ""
     detail: str = "full"

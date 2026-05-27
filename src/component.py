@@ -6,9 +6,17 @@ import logging
 from keboola.component import ComponentBase, UserException
 from keboola.component.base import sync_action
 from keboola.component.sync_actions import SelectElement, ValidationResult
+from keboola.vcr import DefaultSanitizer
 
 from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
 from configuration import Configuration
+
+# Picked up automatically by the datadirtest VCR recorder. Strips the HTTP Basic
+# Authorization header (only content-type/length/accept are kept) and redacts
+# password fields so no credentials are written to committed cassettes.
+VCR_SANITIZERS = [
+    DefaultSanitizer(additional_sensitive_fields=["#password", "password"]),
+]
 
 
 class Component(ComponentBase):
@@ -26,6 +34,8 @@ class Component(ComponentBase):
 
     def run(self):
         cfg = Configuration(**self.configuration.parameters)
+        if not cfg.evidence:
+            raise UserException("No evidence type selected. Choose an evidence type for this row.")
         client = self._build_client(cfg)
 
         date_from, date_to = cfg.resolve_window()
@@ -78,8 +88,11 @@ class Component(ComponentBase):
             primary_key=["id"],
             incremental=incremental,
             schema=columns,
+            has_header=True,
         )
 
+        # Header-ful CSV: the first row holds the column names (self-documenting).
+        # has_header=True makes the manifest agree so the header isn't ingested as data.
         with open(table.full_path, "w", encoding="utf-8", newline="") as out_file:
             writer = csv.DictWriter(out_file, fieldnames=columns, extrasaction="ignore")
             writer.writeheader()
