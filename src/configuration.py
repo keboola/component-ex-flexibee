@@ -25,7 +25,7 @@ class Configuration(BaseModel):
     detail: str = "full"
     custom_fields: str = ""
     custom_filter: str = ""
-    limit: int = 200
+    limit: int = Field(default=200, gt=0)
 
     def __init__(self, **data):
         try:
@@ -42,11 +42,15 @@ class Configuration(BaseModel):
         Relative ("5 days ago") and absolute ("2026-05-01") strings are accepted.
         """
         if not self.date_from:
+            if self.date_to:
+                logging.warning(
+                    "date_to is set but date_from is empty; ignoring date_to and extracting full history."
+                )
             return None, None
         date_to = self.date_to or "now"
         try:
             start, end = parse_datetime_interval(self.date_from, date_to)
-        except (ValueError, TypeError) as exc:
+        except Exception as exc:
             raise UserException(
                 f"Invalid date range: date_from='{self.date_from}', date_to='{date_to}': {exc}"
             )

@@ -67,3 +67,26 @@ def test_resolve_window_invalid_from_raises_user_exception():
     cfg = Configuration(**data)
     with pytest.raises(UserException):
         cfg.resolve_window()
+
+
+def test_resolve_window_to_only_warns_and_returns_none(caplog):
+    import logging
+
+    data = dict(BASE, date_to="2026-05-27")
+    cfg = Configuration(**data)
+    with caplog.at_level(logging.WARNING):
+        date_from, date_to = cfg.resolve_window()
+    assert date_from is None
+    assert date_to is None
+    assert any(
+        "date_to is set but date_from is empty" in record.message
+        for record in caplog.records
+    )
+
+
+def test_limit_must_be_positive():
+    from keboola.component import UserException
+
+    data = dict(BASE, limit=0)
+    with pytest.raises(UserException):
+        Configuration(**data)
