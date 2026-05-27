@@ -30,3 +30,29 @@ def test_build_evidence_path_with_filter_goes_in_path_not_query():
     # Filter MUST be inside parentheses in the path, NOT a query string.
     assert path == "c/demo/faktura-vydana/(lastUpdate gt '2026-05-01T00:00:00+00:00').json"
     assert "?filter=" not in path
+
+
+from datetime import datetime  # noqa: E402
+
+
+def test_build_lastupdate_wql_both_bounds():
+    c = _client()
+    wql = c.build_lastupdate_wql(
+        datetime(2026, 5, 1, 0, 0, 0),
+        datetime(2026, 5, 27, 23, 59, 59),
+    )
+    assert wql == (
+        "lastUpdate gt '2026-05-01T00:00:00+00:00' "
+        "and lastUpdate lt '2026-05-27T23:59:59+00:00'"
+    )
+
+
+def test_build_lastupdate_wql_from_only():
+    c = _client()
+    wql = c.build_lastupdate_wql(datetime(2026, 5, 1, 0, 0, 0), None)
+    assert wql == "lastUpdate gt '2026-05-01T00:00:00+00:00'"
+
+
+def test_build_lastupdate_wql_none_returns_none():
+    c = _client()
+    assert c.build_lastupdate_wql(None, None) is None

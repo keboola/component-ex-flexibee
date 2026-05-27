@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 
 class FlexiBeeClientError(Exception):
     """Raised for FlexiBee API errors that should surface to the user."""
@@ -36,3 +38,24 @@ class FlexiBeeClient:
         if wql:
             return f"c/{self.company}/{evidence}/({wql}).json"
         return f"c/{self.company}/{evidence}.json"
+
+    _WQL_TS_FORMAT = "%Y-%m-%dT%H:%M:%S+00:00"
+
+    def build_lastupdate_wql(
+        self,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> str | None:
+        """Build a WQL `lastUpdate` window. Returns None when both bounds are absent.
+
+        Uses `gt` / `lt` (the API rejects `ge` / `le`) and full ISO timestamps with
+        offset (the API rejects date-only values).
+        """
+        clauses: list[str] = []
+        if date_from is not None:
+            clauses.append(f"lastUpdate gt '{date_from.strftime(self._WQL_TS_FORMAT)}'")
+        if date_to is not None:
+            clauses.append(f"lastUpdate lt '{date_to.strftime(self._WQL_TS_FORMAT)}'")
+        if not clauses:
+            return None
+        return " and ".join(clauses)
