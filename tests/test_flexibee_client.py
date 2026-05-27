@@ -83,3 +83,39 @@ def test_flatten_record_list_values_json_encoded():
     flat = c.flatten_record(record)
     assert flat["id"] == "2"
     assert flat["external-ids"] == '["ext:DATIVERY:abc"]'
+
+
+from unittest import mock  # noqa: E402
+
+
+def _winstrom_page(evidence, records, row_count=None):
+    body = {evidence: records}
+    if row_count is not None:
+        body["@rowCount"] = str(row_count)
+    return {"winstrom": body}
+
+
+def test_iter_records_paginates_until_exhausted():
+    c = _client()
+    page1 = _winstrom_page("faktura-vydana", [{"id": "1"}, {"id": "2"}], row_count=3)
+    page2 = _winstrom_page("faktura-vydana", [{"id": "3"}])
+    page3 = _winstrom_page("faktura-vydana", [])
+
+    responses = []
+    for body in (page1, page2, page3):
+        resp = mock.Mock()
+        resp.json.return_value = body
+        responses.append(resp)
+
+    c._http.get = mock.Mock(side_effect=responses)
+
+    rows = list(c.iter_records("faktura-vydana", wql=None, detail="full", limit=2))
+
+    assert [r["id"] for r in rows] == ["1", "2", "3"]
+    # First call requests add-row-count and start=0; second start=2.
+    first_params = c._http.get.call_args_list[0].kwargs["params"]
+    second_params = c._http.get.call_args_list[1].kwargs["params"]
+    assert first_params["start"] == 0
+    assert first_params["limit"] == 2
+    assert first_params["detail"] == "full"
+    assert second_params["start"] == 2

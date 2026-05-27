@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from keboola.http_client import HttpClient
+
 
 class FlexiBeeClientError(Exception):
     """Raised for FlexiBee API errors that should surface to the user."""
@@ -30,6 +32,13 @@ class FlexiBeeClient:
         self.username = username
         self.password = password
         self.ssl_verify = ssl_verify
+        self._http = HttpClient(
+            base_url=f"{self.base_url}/",
+            auth=(self.username, self.password),
+            max_retries=5,
+            backoff_factor=0.5,
+            status_forcelist=(500, 502, 503, 504),
+        )
 
     def build_evidence_path(self, evidence: str, wql: str | None) -> str:
         """Build the relative endpoint path for an evidence list call.
@@ -76,3 +85,36 @@ class FlexiBeeClient:
             else:
                 flat[col] = value
         return flat
+
+    def iter_records(
+        self,
+        evidence: str,
+        wql: str | None,
+        detail: str = "full",
+        custom_fields: str | None = None,
+        limit: int = 200,
+    ):
+        """Yield flattened records for one evidence, paging via start/limit.
+
+        `detail` is "full", "summary", or "custom:<fields>" — when `custom_fields`
+        is given it overrides `detail` with `custom:<fields>`.
+        """
+        endpoint = self.build_evidence_path(evidence, wql)
+        detail_value = f"custom:{custom_fields}" if custom_fields else detail
+        start = 0
+        first = True
+        while True:
+            params = {"start": start, "limit": limit, "detail": detail_value}
+            if first:
+                params["add-row-count"] = "true"
+            response = self._http.get(endpoint_path=endpoint, params=params, verify=self.ssl_verify)
+            body = response.json().get("winstrom", {})
+            page = body.get(evidence, [])
+            if not page:
+                break
+            for record in page:
+                yield self.flatten_record(record)
+            if len(page) < limit:
+                break
+            start += limit
+            first = False
