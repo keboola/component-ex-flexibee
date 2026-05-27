@@ -45,7 +45,8 @@ flattened `config.json`.
 state-file watermarking, the user configures a date window on `lastUpdate`:
 
 - `date_from` accepts relative expressions (`"5 days ago"`, `"last 5 days"`, `"yesterday"`) or
-  absolute dates (`"2026-01-01"`), parsed with `dateparser`. Empty = full history.
+  absolute dates (`"2026-01-01"`), parsed with `keboola.utils.date.parse_datetime_interval`
+  (already a dependency; wraps `dateparser`). Empty = full history.
 - `date_to` defaults to now.
 - The window is applied as a **URL path filter** (see §4 for the critical syntax caveat).
 - Output uses Keboola **incremental load with primary key `id`**, so overlapping windows on
@@ -104,15 +105,17 @@ This was verified live and **must** be respected by the implementation:
 - `GET /c/demo/faktura-vydana.json?filter=...` → **filter silently ignored**, returns ALL rows,
   no error. A garbage filter also returns all rows. Using the query-string form would silently
   break incremental and quietly pull the full table every run.
-- `GET /c/demo/faktura-vydana/(lastUpdate ge '2026-05-27T00:00:00+02:00').json` → **correct**;
+- `GET /c/demo/faktura-vydana/(lastUpdate gt '2026-05-27T00:00:00+02:00').json` → **correct**;
   filter inside parentheses in the path is applied (verified: rowCount dropped from 10,999 to 4).
 
 The client MUST build filters as path segments `(<expr>)` and URL-encode them. There must be a
 test asserting that a filtered request returns fewer rows than an unfiltered one, to guard against
 regressing to the query-string form.
 
-- **Timestamp format** for `lastUpdate` comparisons: ISO 8601 with offset, e.g.
-  `2026-05-27T00:00:00+02:00`.
+- **WQL operators (verified):** use `gt` / `lt` — `ge` / `le` are **rejected** with
+  "Špatný formát WQL dotazu" (bad WQL format). Range = `(lastUpdate gt '<from>' and lastUpdate lt '<to>')`.
+- **Timestamp format (verified):** ISO 8601 **with offset and time component** is required;
+  a date-only value (`'2026-05-27'`) is rejected. Format as `%Y-%m-%dT%H:%M:%S+00:00` (UTC).
 - **Ordering:** `?order=lastUpdate@D` works (verified) if needed for diagnostics.
 - **Line items / sub-records** (`*-polozka`) are separate evidences (`NOT_DIRECT`). v1 does **not**
   auto-expand them; a user who wants invoice lines adds `faktura-vydana-polozka` as its own row.
