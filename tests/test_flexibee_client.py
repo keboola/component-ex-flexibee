@@ -56,3 +56,30 @@ def test_build_lastupdate_wql_from_only():
 def test_build_lastupdate_wql_none_returns_none():
     c = _client()
     assert c.build_lastupdate_wql(None, None) is None
+
+
+def test_flatten_record_reference_fields():
+    c = _client()
+    record = {
+        "id": "1",
+        "kod": "FV001",
+        "mena": "code:CZK",
+        "mena@ref": "/c/demo/mena/31.json",
+        "mena@showAs": "CZK: Ceska koruna",
+    }
+    flat = c.flatten_record(record)
+    assert flat == {
+        "id": "1",
+        "kod": "FV001",
+        "mena": "code:CZK",
+        "mena_ref": "/c/demo/mena/31.json",
+        "mena_showAs": "CZK: Ceska koruna",
+    }
+
+
+def test_flatten_record_list_values_json_encoded():
+    c = _client()
+    record = {"id": "2", "external-ids": ["ext:DATIVERY:abc"]}
+    flat = c.flatten_record(record)
+    assert flat["id"] == "2"
+    assert flat["external-ids"] == '["ext:DATIVERY:abc"]'

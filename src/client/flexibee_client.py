@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 
@@ -59,3 +60,19 @@ class FlexiBeeClient:
         if not clauses:
             return None
         return " and ".join(clauses)
+
+    @staticmethod
+    def flatten_record(record: dict) -> dict:
+        """Flatten one FlexiBee record into a flat dict of stringy columns.
+
+        `@`-suffixed reference variants (`x@ref`, `x@showAs`) become `x_ref` / `x_showAs`.
+        List/dict values are JSON-encoded so they fit a single CSV cell.
+        """
+        flat: dict = {}
+        for key, value in record.items():
+            col = key.replace("@", "_")
+            if isinstance(value, (list, dict)):
+                flat[col] = json.dumps(value, ensure_ascii=False)
+            else:
+                flat[col] = value
+        return flat
