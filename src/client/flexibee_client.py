@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+import requests
 from keboola.http_client import HttpClient
 
 
@@ -107,8 +108,11 @@ class FlexiBeeClient:
             params = {"start": start, "limit": limit, "detail": detail_value}
             if first:
                 params["add-row-count"] = "true"
-            response = self._http.get(endpoint_path=endpoint, params=params, verify=self.ssl_verify)
-            body = response.json().get("winstrom", {})
+            try:
+                data = self._http.get(endpoint_path=endpoint, params=params, verify=self.ssl_verify)
+            except requests.RequestException as exc:
+                raise FlexiBeeClientError(f"Request to evidence '{evidence}' failed: {exc}") from exc
+            body = data.get("winstrom", {})
             page = body.get(evidence, [])
             if not page:
                 break
@@ -122,8 +126,11 @@ class FlexiBeeClient:
     def list_evidences(self) -> list[tuple[str, str]]:
         """Return (evidencePath, evidenceName) pairs for the connected company."""
         endpoint = f"c/{self.company}/evidence-list.json"
-        response = self._http.get(endpoint_path=endpoint, verify=self.ssl_verify)
-        evidences = response.json().get("evidences", {}).get("evidence", [])
+        try:
+            data = self._http.get(endpoint_path=endpoint, verify=self.ssl_verify)
+        except requests.RequestException as exc:
+            raise FlexiBeeClientError(f"Could not list evidences: {exc}") from exc
+        evidences = data.get("evidences", {}).get("evidence", [])
         return [(e.get("evidencePath", ""), e.get("evidenceName", "")) for e in evidences]
 
     def test_connection(self) -> None:

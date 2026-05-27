@@ -43,15 +43,11 @@ class Configuration(BaseModel):
         """
         if not self.date_from:
             if self.date_to:
-                logging.warning(
-                    "date_to is set but date_from is empty; ignoring date_to and extracting full history."
-                )
+                logging.warning("date_to is set but date_from is empty; ignoring date_to and extracting full history.")
             return None, None
         date_to = self.date_to or "now"
         try:
             start, end = parse_datetime_interval(self.date_from, date_to)
         except Exception as exc:
-            raise UserException(
-                f"Invalid date range: date_from='{self.date_from}', date_to='{date_to}': {exc}"
-            )
+            raise UserException(f"Invalid date range: date_from='{self.date_from}', date_to='{date_to}': {exc}")
         return start, end

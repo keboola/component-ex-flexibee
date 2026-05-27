@@ -44,15 +44,18 @@ class Component(ComponentBase):
         # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
         # so a fixed first-row header would silently drop later fields. Evidence sizes
         # are modest (thousands of flat rows), so buffering is acceptable for v1.
-        records = list(
-            client.iter_records(
-                cfg.evidence,
-                wql=wql,
-                detail=cfg.detail,
-                custom_fields=cfg.custom_fields,
-                limit=cfg.limit,
+        try:
+            records = list(
+                client.iter_records(
+                    cfg.evidence,
+                    wql=wql,
+                    detail=cfg.detail,
+                    custom_fields=cfg.custom_fields,
+                    limit=cfg.limit,
+                )
             )
-        )
+        except FlexiBeeClientError as exc:
+            raise UserException(str(exc))
 
         columns: list[str] = []
         seen: set[str] = set()

@@ -41,10 +41,7 @@ def test_build_lastupdate_wql_both_bounds():
         datetime(2026, 5, 1, 0, 0, 0),
         datetime(2026, 5, 27, 23, 59, 59),
     )
-    assert wql == (
-        "lastUpdate gt '2026-05-01T00:00:00+00:00' "
-        "and lastUpdate lt '2026-05-27T23:59:59+00:00'"
-    )
+    assert wql == ("lastUpdate gt '2026-05-01T00:00:00+00:00' and lastUpdate lt '2026-05-27T23:59:59+00:00'")
 
 
 def test_build_lastupdate_wql_from_only():
@@ -101,13 +98,7 @@ def test_iter_records_paginates_until_exhausted():
     page2 = _winstrom_page("faktura-vydana", [{"id": "3"}])
     page3 = _winstrom_page("faktura-vydana", [])
 
-    responses = []
-    for body in (page1, page2, page3):
-        resp = mock.Mock()
-        resp.json.return_value = body
-        responses.append(resp)
-
-    c._http.get = mock.Mock(side_effect=responses)
+    c._http.get = mock.Mock(side_effect=[page1, page2, page3])
 
     rows = list(c.iter_records("faktura-vydana", wql=None, detail="full", limit=2))
 
@@ -131,15 +122,26 @@ def test_list_evidences_returns_path_name_pairs():
             ]
         }
     }
-    resp = mock.Mock()
-    resp.json.return_value = body
-    c._http.get = mock.Mock(return_value=resp)
+    c._http.get = mock.Mock(return_value=body)
 
     result = c.list_evidences()
     assert result == [
         ("faktura-vydana", "Vydane faktury"),
         ("adresar", "Adresy firem"),
     ]
+
+
+def test_iter_records_wraps_http_error():
+    import requests
+
+    c = _client()
+    c._http.get = mock.Mock(side_effect=requests.HTTPError("401 Unauthorized"))
+    try:
+        list(c.iter_records("faktura-vydana", wql=None))
+    except FlexiBeeClientError as e:
+        assert "faktura-vydana" in str(e)
+    else:
+        raise AssertionError("expected FlexiBeeClientError")
 
 
 def test_test_connection_raises_on_http_error():
