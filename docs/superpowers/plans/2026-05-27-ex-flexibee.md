@@ -26,7 +26,15 @@ WQL specifics, all verified against `https://demo.flexibee.eu`:
 - Timestamps need full ISO 8601 with time + offset. Date-only (`'2026-05-27'`) is **rejected**. Use `%Y-%m-%dT%H:%M:%S+00:00`.
 - Range: `(lastUpdate gt '<from>' and lastUpdate lt '<to>')`.
 
-**Public demo for development & tests:** base_url `https://demo.flexibee.eu`, company `demo`, user `winstrom`, password `winstrom`. Response envelope: `{"winstrom": {"@rowCount": "N", "<evidence>": [ {record}, ... ]}}`. Records carry reference fields in correlated forms, e.g. `mena`, `mena@ref`, `mena@showAs`.
+**Response shape (verified against the public demo):** `{"winstrom": {"@rowCount": "N", "<evidence>": [ {record}, ... ]}}`. Records carry reference fields in correlated forms, e.g. `mena`, `mena@ref`, `mena@showAs`.
+
+**Credentials for live/recording — `secrets.env` (gitignored), via substitution only:**
+The repo root holds `secrets.env` with keys `USERNAME`, `PASSWORD`, `WEBSITE` (the base URL to log in to). **Hard rules:**
+- **Never read, print, echo, or commit the values** — especially `PASSWORD`. `secrets.env` is gitignored (`*.env`).
+- Use them **via shell/env substitution** only, e.g. `set -a; . ./secrets.env; set +a` then reference `$USERNAME` / `$PASSWORD` / `$WEBSITE` — never inline the literal value into a command, file, or log.
+- Committed test fixtures (`config.json`) must **not** contain real credentials. Use a placeholder password and rely on VCR cassette replay (which matches on URL/method, not auth). Cassette sanitizers MUST scrub the `Authorization` header before anything is written to disk/committed.
+- The company (`firma`) is the path segment after `/c/` in `WEBSITE` if present; otherwise determine it during recording from `WEBSITE`/the instance. Do not hardcode `demo`.
+- The public demo (`https://demo.flexibee.eu/c/demo/`, `winstrom`/`winstrom`) remains a fallback for shape verification only; the real instance in `secrets.env` is the recording target.
 
 **Verified library signatures:**
 ```python
@@ -1086,17 +1094,17 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Create the happy-path config fixture**
+- [ ] **Step 2: Create the happy-path config fixture (placeholders, no real secrets)**
 
-Create `tests/functional/happy_path/source/data/config.json` (merged root+row params, small window to keep the cassette small):
+Create `tests/functional/happy_path/source/data/config.json`. Connection values are **placeholders** — the real instance comes from `secrets.env` via substitution at recording time (see Step 3). Use a narrow window to keep the cassette small:
 
 ```json
 {
   "parameters": {
-    "base_url": "https://demo.flexibee.eu",
-    "company": "demo",
-    "username": "winstrom",
-    "#password": "winstrom",
+    "base_url": "https://flexibee.example.com",
+    "company": "PLACEHOLDER_COMPANY",
+    "username": "PLACEHOLDER_USER",
+    "#password": "PLACEHOLDER_PASSWORD",
     "ssl_verify": true,
     "evidence": "faktura-vydana",
     "date_from": "2026-05-26",
@@ -1107,12 +1115,19 @@ Create `tests/functional/happy_path/source/data/config.json` (merged root+row pa
 }
 ```
 
-- [ ] **Step 3: Record the cassette against the demo**
+- [ ] **Step 3: Record the cassette against the real instance (substitution, sanitized)**
 
-Follow `component-developer:generate-vcr-tests` to record. The recording run executes the component against `https://demo.flexibee.eu`, captures HTTP interactions into a cassette under `tests/functional/happy_path/`, and writes the expected output table + manifest. Ensure the cassette sanitizer scrubs the `Authorization` header.
+Follow `component-developer:generate-vcr-tests` to record. **Credentials rules (from the plan Context):**
+- Load the real instance via env substitution: `set -a; . ./secrets.env; set +a`, then drive the recording with `$WEBSITE` / `$USERNAME` / `$PASSWORD`. Never inline or echo the password.
+- Configure the VCR sanitizer to scrub the `Authorization` header (and any password) **before** the cassette is written. Verify the written cassette contains no credential material.
+- After recording, the committed `config.json` keeps the placeholder values from Step 2; the VCR matcher must be configured (per generate-vcr-tests) so replay does not depend on the real host/credentials.
 
-Run (recording mode, per generate-vcr-tests): records the cassette and `expected/` tree.
-Expected: a cassette file is created; `expected/data/out/tables/faktura-vydana.csv` and `.manifest` exist; manifest shows `primary_key: ["id"]` and `incremental: true`.
+Expected: a sanitized cassette is created; `expected/data/out/tables/faktura-vydana.csv` and `.manifest` exist; manifest shows `primary_key: ["id"]` and `incremental: true`.
+
+- [ ] **Step 3a: Audit the cassette for leaked secrets before committing**
+
+Run: `cd /Users/matyasjirat/VSCodeProjects/Keboola/component-ex-flexibee && set -a; . ./secrets.env; set +a; grep -rqF "$PASSWORD" tests/functional/ && echo "LEAK FOUND - DO NOT COMMIT" || echo "clean"`
+Expected: prints `clean`. (This greps for the secret without printing it. If it prints LEAK, fix the sanitizer before proceeding.)
 
 - [ ] **Step 4: Run the datadir test in replay mode**
 
@@ -1137,15 +1152,15 @@ git commit -m "test: flexibee happy-path datadir+VCR functional test"
 
 - [ ] **Step 1: Bad-credentials case (expects exit 1)**
 
-Create `tests/functional/bad_credentials/source/data/config.json`:
+Create `tests/functional/bad_credentials/source/data/config.json` (placeholders; recording uses `$USERNAME` from `secrets.env` with a deliberately wrong password to capture a 401):
 
 ```json
 {
   "parameters": {
-    "base_url": "https://demo.flexibee.eu",
-    "company": "demo",
-    "username": "winstrom",
-    "#password": "WRONG",
+    "base_url": "https://flexibee.example.com",
+    "company": "PLACEHOLDER_COMPANY",
+    "username": "PLACEHOLDER_USER",
+    "#password": "PLACEHOLDER_PASSWORD",
     "ssl_verify": true,
     "evidence": "faktura-vydana",
     "detail": "full",
@@ -1158,15 +1173,15 @@ Add `tests/functional/bad_credentials/expected/data/out/` empty and a `tests/fun
 
 - [ ] **Step 2: Full-load case (no date_from → overwrite, not incremental)**
 
-Create `tests/functional/full_load/source/data/config.json`:
+Create `tests/functional/full_load/source/data/config.json` (placeholders; recording substitutes from `secrets.env`):
 
 ```json
 {
   "parameters": {
-    "base_url": "https://demo.flexibee.eu",
-    "company": "demo",
-    "username": "winstrom",
-    "#password": "winstrom",
+    "base_url": "https://flexibee.example.com",
+    "company": "PLACEHOLDER_COMPANY",
+    "username": "PLACEHOLDER_USER",
+    "#password": "PLACEHOLDER_PASSWORD",
     "ssl_verify": true,
     "evidence": "adresar",
     "detail": "full",
@@ -1175,9 +1190,9 @@ Create `tests/functional/full_load/source/data/config.json`:
 }
 ```
 
-- [ ] **Step 3: Record cassettes for both cases**
+- [ ] **Step 3: Record cassettes for both cases (substitution, sanitized)**
 
-Follow `generate-vcr-tests` to record both. For `full_load`, assert the manifest shows `incremental: false` (no `date_from`). For `bad_credentials`, the auth failure must map to exit code 1 (`UserException`).
+Follow `generate-vcr-tests` to record both against the real instance via `secrets.env` substitution (`set -a; . ./secrets.env; set +a`), with the `Authorization`-header sanitizer active. For `full_load`, assert the manifest shows `incremental: false` (no `date_from`). For `bad_credentials`, record with a deliberately wrong password (do **not** use `$PASSWORD`) so the instance returns 401 → the component maps it to exit code 1 (`UserException`). Re-run the Task 11 Step 3a leak audit over `tests/functional/` and confirm `clean` before committing.
 
 - [ ] **Step 4: Run the full functional suite**
 
@@ -1203,31 +1218,39 @@ git commit -m "test: flexibee bad-credentials (exit 1) and full-load datadir cas
 Run: `cd /Users/matyasjirat/VSCodeProjects/Keboola/component-ex-flexibee && uv run ruff check . && uv run pytest -v`
 Expected: ruff clean; all unit + functional tests PASS.
 
-- [ ] **Step 2: Refresh the local run sample**
+- [ ] **Step 2: Build the local run sample from secrets.env (gitignored, no echo)**
 
-Overwrite `data/config.json` (gitignored; for `python src/component.py` local runs):
+`data/config.json` is gitignored. Build it from `secrets.env` via substitution so the real password is never typed or printed. Write a template and substitute:
 
-```json
-{
-  "parameters": {
-    "base_url": "https://demo.flexibee.eu",
-    "company": "demo",
-    "username": "winstrom",
-    "#password": "winstrom",
-    "ssl_verify": true,
+```bash
+cd /Users/matyasjirat/VSCodeProjects/Keboola/component-ex-flexibee
+set -a; . ./secrets.env; set +a
+python3 - <<'PY'
+import json, os
+cfg = {"parameters": {
+    "base_url": os.environ["WEBSITE"],
+    "company": os.environ.get("COMPANY", os.environ.get("FIRMA", "")),
+    "username": os.environ["USERNAME"],
+    "#password": os.environ["PASSWORD"],
+    "ssl_verify": True,
     "evidence": "faktura-vydana",
     "date_from": "7 days ago",
     "date_to": "now",
     "detail": "full",
-    "limit": 200
-  }
-}
+    "limit": 200,
+}}
+with open("data/config.json", "w") as f:
+    json.dump(cfg, f, indent=2)
+print("wrote data/config.json")
+PY
 ```
 
-- [ ] **Step 3: Manual smoke run (optional, hits the live demo)**
+If `company`/`firma` is not a separate secret, derive it from `WEBSITE` (the segment after `/c/`) and set it manually in `data/config.json` afterward — without printing the password.
+
+- [ ] **Step 3: Manual smoke run (optional, hits the real instance)**
 
 Run: `cd /Users/matyasjirat/VSCodeProjects/Keboola/component-ex-flexibee/src && uv run python component.py`
-Expected: writes `../data/out/tables/faktura-vydana.csv` with a header and recent rows; logs "Wrote N rows".
+Expected: writes `../data/out/tables/faktura-vydana.csv` with a header and recent rows; logs "Wrote N rows". If the real instance has sparse data, fall back to the public demo for shape confirmation.
 
 - [ ] **Step 4: Commit (code/tests only; data/ is gitignored)**
 
@@ -1244,7 +1267,7 @@ git commit -m "chore: flexibee full test+lint gate green" || echo "nothing to co
 
 - [ ] **Step 1: Register & configure via kbagent**
 
-Use `kbagent` to register `keboola.ex-flexibee` in the CF test project and create a config: root = demo connection (`https://demo.flexibee.eu`/`demo`/`winstrom`/`winstrom`), two rows — `faktura-vydana` with `date_from="30 days ago"`, and `adresar` full load. Use the two-step dry-run → confirm → apply flow.
+Use `kbagent` to register `keboola.ex-flexibee` in the CF test project and create a config with two rows — `faktura-vydana` with `date_from="30 days ago"`, and `adresar` full load. Use the two-step dry-run → confirm → apply flow. For the connection, prefer the **real instance** from `secrets.env` (`WEBSITE`/`USERNAME`/`PASSWORD`); enter `#password` through kbagent's encryption/secure flow so it is stored encrypted and never printed in logs or command output. If putting real credentials in the shared CF test project is undesirable, fall back to the public demo connection. Do not echo the password.
 
 - [ ] **Step 2: Run the configuration**
 
