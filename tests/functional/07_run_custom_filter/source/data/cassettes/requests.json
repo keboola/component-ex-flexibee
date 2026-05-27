@@ -1,0 +1,7 @@
+{
+  "_metadata": {"freeze_time": "2026-05-27T12:00:00", "keboola_vcr_version": "0.5.0", "recorded_at": "2026-05-27T15:46:41.451077+00:00"},
+  "interactions": [
+    {"request": {"body": null, "headers": {"Accept": ["*/*"]}, "method": "GET", "uri": "https://demo.flexibee.eu/c/demo/mena/(kod%20=%20%27CZK%27).json?start=0&limit=200&detail=full&add-row-count=true"}, "response": {"body": {"string": "{\"winstrom\":{\"@version\":\"1.0\",\"@rowCount\":\"1\",\"mena\":[{\"id\":\"31\",\"lastUpdate\":\"2024-06-04T15:11:15.460+02:00\",\"kod\":\"CZK\",\"nazev\":\"\u010cesk\u00e1 koruna\",\"nazevA\":\"\",\"nazevB\":\"\",\"nazevC\":\"\",\"poznam\":\"\",\"popis\":\"\",\"platiOd\":\"0\",\"platiDo\":\"9999\",\"symbol\":\"K\u010d\",\"kurzMnozstvi\":\"1.0\",\"zpusobStahKurzK\":\"zpusobStahKurz.rocne\",\"zpusobStahKurzK@showAs\":\"Ro\u010dn\u011b\"}]}}"}, "headers": {"Content-Length": ["352"], "Content-Type": ["application/json"]}, "status": {"code": 200, "message": "OK"}}}
+  ],
+  "version": 1
+}

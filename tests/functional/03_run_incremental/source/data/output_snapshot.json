@@ -241,9 +241,9 @@
         "osobUpravaDph",
         "odpocAuto"
       ],
-      "hash": "sha256:9fc10b3cb8f22e6743699cc79eefee869cfdd87215bed0c8cc469b1022bb9d5b",
-      "row_count": 5,
-      "size_bytes": 13665
+      "hash": "sha256:3ff50b82c1676483469cfa42dcde1fa560f4939d6d7747194f5353756b3d8c3c",
+      "row_count": 7,
+      "size_bytes": 19103
     },
     "faktura-vydana.csv.manifest": {
       "columns": null,

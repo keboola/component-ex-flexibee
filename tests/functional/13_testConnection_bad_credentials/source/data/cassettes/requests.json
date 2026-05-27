@@ -1,0 +1,7 @@
+{
+  "_metadata": {"freeze_time": "2026-05-27T12:00:00", "keboola_vcr_version": "0.5.0", "recorded_at": "2026-05-27T15:46:42.730573+00:00"},
+  "interactions": [
+    {"request": {"body": null, "headers": {"Accept": ["*/*"]}, "method": "GET", "uri": "https://demo.flexibee.eu/c/demo/evidence-list.json"}, "response": {"body": {"string": "{\"winstrom\":{\"@version\":\"1.0\",\"success\":\"false\",\"message\":\"Je pot\u0159ebn\u00e1 autorizace.\",\"message@messageCode\":\"authRequired\"}}"}, "headers": {"Content-Length": ["124"], "Content-Type": ["application/json"]}, "status": {"code": 401, "message": "Unauthorized"}}}
+  ],
+  "version": 1
+}

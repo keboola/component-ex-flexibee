@@ -1,0 +1,7 @@
+{
+  "_metadata": {"freeze_time": "2026-05-27T12:00:00", "keboola_vcr_version": "0.5.0", "recorded_at": "2026-05-27T15:46:41.307447+00:00"},
+  "interactions": [
+    {"request": {"body": null, "headers": {"Accept": ["*/*"]}, "method": "GET", "uri": "https://demo.flexibee.eu/c/demo/faktura-vydana/(lastUpdate%20gt%20%272026-05-27T00%3A00%3A00%2B00%3A00%27%20and%20lastUpdate%20lt%20%272026-05-28T00%3A00%3A00%2B00%3A00%27).json?start=0&limit=200&detail=custom%3Aid%2Ckod%2ClastUpdate%2CsumCelkem&add-row-count=true"}, "response": {"body": {"string": "{\"winstrom\":{\"@version\":\"1.0\",\"@rowCount\":\"6\",\"faktura-vydana\":[{\"id\":\"32379\",\"kod\":\"VF1-0100001107/2026\",\"lastUpdate\":\"2026-05-27T09:54:03.102+02:00\",\"sumCelkem\":\"500.0\"},{\"id\":\"32412\",\"kod\":\"VF1-0100001108/2026\",\"lastUpdate\":\"2026-05-27T10:13:58.675+02:00\",\"sumCelkem\":\"967.0\"},{\"id\":\"32454\",\"kod\":\"VF1-0100001109/2026\",\"lastUpdate\":\"2026-05-27T11:27:46.590+02:00\",\"sumCelkem\":\"1588.0\"},{\"id\":\"32455\",\"kod\":\"VF1-0100001110/2026\",\"lastUpdate\":\"2026-05-27T11:40:08.213+02:00\",\"sumCelkem\":\"378.0\"},{\"id\":\"32462\",\"kod\":\"VF1-0100001111/2026\",\"lastUpdate\":\"2026-05-27T14:12:00.897+02:00\",\"sumCelkem\":\"1588.0\"},{\"id\":\"32463\",\"kod\":\"VF1-0100001112/2026\",\"lastUpdate\":\"2026-05-27T14:34:09.703+02:00\",\"sumCelkem\":\"2211.0\"}]}}"}, "headers": {"Content-Length": ["717"], "Content-Type": ["application/json"]}, "status": {"code": 200, "message": "OK"}}}
+  ],
+  "version": 1
+}

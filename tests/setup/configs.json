@@ -64,6 +64,100 @@
     }
   },
   {
+    "name": "05_run_detail_summary",
+    "description": "Run with detail=summary on a narrow faktura-vydana window",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "faktura-vydana",
+        "date_from": "2026-05-27",
+        "date_to": "2026-05-28",
+        "detail": "summary",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "06_run_detail_custom",
+    "description": "Run with detail=custom and an explicit custom_fields list",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "faktura-vydana",
+        "date_from": "2026-05-27",
+        "date_to": "2026-05-28",
+        "detail": "custom",
+        "custom_fields": "id,kod,lastUpdate,sumCelkem",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "07_run_custom_filter",
+    "description": "Run with an advanced WQL custom_filter (mena kod = CZK) - full load",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "mena",
+        "custom_filter": "kod = 'CZK'",
+        "detail": "full",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "08_run_relative_dates",
+    "description": "Run with relative date expressions (1 day ago .. today) on faktura-vydana",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "faktura-vydana",
+        "date_from": "1 day ago",
+        "date_to": "today",
+        "detail": "summary",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "09_run_pagination",
+    "description": "Force multi-page pagination: mena (36 rows) with limit=10 -> 4 pages",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "mena",
+        "detail": "custom",
+        "custom_fields": "id,kod",
+        "limit": 10
+      }
+    }
+  },
+  {
     "name": "10_run_bad_credentials",
     "description": "Run with wrong password -> 401 mapped to UserException, exit code 1",
     "config": {
@@ -93,6 +187,37 @@
         "evidence": "faktura-vydana",
         "detail": "full",
         "limit": 200
+      }
+    }
+  },
+  {
+    "name": "12_run_invalid_evidence",
+    "description": "Run with a non-existent evidence -> API 404 mapped to UserException, exit code 1",
+    "config": {
+      "action": "run",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "winstrom",
+        "ssl_verify": true,
+        "evidence": "nonexistent-evidence-xyz",
+        "detail": "full",
+        "limit": 200
+      }
+    }
+  },
+  {
+    "name": "13_testConnection_bad_credentials",
+    "description": "testConnection with wrong password -> sync action fails (UserException)",
+    "config": {
+      "action": "testConnection",
+      "parameters": {
+        "base_url": "https://demo.flexibee.eu",
+        "company": "demo",
+        "username": "winstrom",
+        "#password": "definitely-wrong-password",
+        "ssl_verify": true
       }
     }
   }
