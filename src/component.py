@@ -37,7 +37,7 @@ class Component(ComponentBase):
             wql_parts.append(cfg.custom_filter)
         wql = " and ".join(wql_parts) if wql_parts else None
 
-        incremental = bool(cfg.date_from)
+        incremental = date_from is not None
         logging.info("Extracting evidence '%s' (incremental=%s)", cfg.evidence, incremental)
 
         # Buffer records so we can compute the full column union before writing.
@@ -49,7 +49,7 @@ class Component(ComponentBase):
                 cfg.evidence,
                 wql=wql,
                 detail=cfg.detail,
-                custom_fields=cfg.custom_fields or None,
+                custom_fields=cfg.custom_fields,
                 limit=cfg.limit,
             )
         )
@@ -62,9 +62,13 @@ class Component(ComponentBase):
                     seen.add(key)
                     columns.append(key)
 
-        if "id" not in seen:
-            # Output requires a stable primary key; FlexiBee records always carry `id`.
-            columns.insert(0, "id")
+        if records and "id" not in seen:
+            raise UserException(
+                f"FlexiBee evidence '{cfg.evidence}' returned records without an 'id' field; "
+                "cannot use it as primary key."
+            )
+        if not columns:
+            columns = ["id"]
 
         table = self.create_out_table_definition(
             f"{cfg.evidence}.csv",
