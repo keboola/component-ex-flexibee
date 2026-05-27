@@ -1,99 +1,114 @@
-"""
-Template Component main class.
-
-"""
+"""ABRA Flexi (FlexiBee) extractor component."""
 
 import csv
 import logging
-from datetime import datetime
 
-from keboola.component.base import ComponentBase
-from keboola.component.exceptions import UserException
+from keboola.component import ComponentBase, UserException
+from keboola.component.base import sync_action
+from keboola.component.sync_actions import SelectElement, ValidationResult
 
+from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
 from configuration import Configuration
 
 
 class Component(ComponentBase):
-    """
-    Extends base class for general Python components. Initializes the CommonInterface
-    and performs configuration validation.
-
-    For easier debugging the data folder is picked up by default from `../data` path,
-    relative to working directory.
-
-    If `debug` parameter is present in the `config.json`, the default logger is set to verbose DEBUG mode.
-    """
-
     def __init__(self):
         super().__init__()
 
+    def _build_client(self, cfg: Configuration) -> FlexiBeeClient:
+        return FlexiBeeClient(
+            base_url=cfg.base_url,
+            company=cfg.company,
+            username=cfg.username,
+            password=cfg.password,
+            ssl_verify=cfg.ssl_verify,
+        )
+
     def run(self):
-        """
-        Main execution code
-        """
+        cfg = Configuration(**self.configuration.parameters)
+        client = self._build_client(cfg)
 
-        # ####### EXAMPLE TO REMOVE
-        # check for missing configuration parameters
-        params = Configuration(**self.configuration.parameters)
+        date_from, date_to = cfg.resolve_window()
+        wql_parts = []
+        window_wql = client.build_lastupdate_wql(date_from, date_to)
+        if window_wql:
+            wql_parts.append(window_wql)
+        if cfg.custom_filter:
+            wql_parts.append(cfg.custom_filter)
+        wql = " and ".join(wql_parts) if wql_parts else None
 
-        # Access parameters in configuration
-        if params.print_hello:
-            logging.info("Hello World")
+        incremental = bool(cfg.date_from)
+        logging.info("Extracting evidence '%s' (incremental=%s)", cfg.evidence, incremental)
 
-        # get input table definitions
-        input_tables = self.get_input_tables_definitions()
-        for table in input_tables:
-            logging.info(f"Received input table: {table.name} with path: {table.full_path}")
+        # Buffer records so we can compute the full column union before writing.
+        # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
+        # so a fixed first-row header would silently drop later fields. Evidence sizes
+        # are modest (thousands of flat rows), so buffering is acceptable for v1.
+        records = list(
+            client.iter_records(
+                cfg.evidence,
+                wql=wql,
+                detail=cfg.detail,
+                custom_fields=cfg.custom_fields or None,
+                limit=cfg.limit,
+            )
+        )
 
-        if len(input_tables) == 0:
-            raise UserException("No input tables found")
+        columns: list[str] = []
+        seen: set[str] = set()
+        for record in records:
+            for key in record:
+                if key not in seen:
+                    seen.add(key)
+                    columns.append(key)
 
-        # get last state data/in/state.json from previous run
-        previous_state = self.get_state_file()
-        logging.info(previous_state.get("some_parameter"))
+        if "id" not in seen:
+            # Output requires a stable primary key; FlexiBee records always carry `id`.
+            columns.insert(0, "id")
 
-        # Create output table (Table definition - just metadata)
-        table = self.create_out_table_definition("output.csv", incremental=True, primary_key=["timestamp"])
+        table = self.create_out_table_definition(
+            f"{cfg.evidence}.csv",
+            primary_key=["id"],
+            incremental=incremental,
+            schema=columns,
+        )
 
-        # get file path of the table (data/out/tables/Features.csv)
-        out_table_path = table.full_path
-        logging.info(out_table_path)
-
-        # Add timestamp column and save into out_table_path
-        input_table = input_tables[0]
-        with (
-            open(input_table.full_path, "r") as inp_file,
-            open(table.full_path, mode="wt", encoding="utf-8", newline="") as out_file,
-        ):
-            reader = csv.DictReader(inp_file)
-
-            columns = list(reader.fieldnames)
-            # append timestamp
-            columns.append("timestamp")
-
-            # write result with column added
-            writer = csv.DictWriter(out_file, fieldnames=columns)
+        with open(table.full_path, "w", encoding="utf-8", newline="") as out_file:
+            writer = csv.DictWriter(out_file, fieldnames=columns, extrasaction="ignore")
             writer.writeheader()
-            for in_row in reader:
-                in_row["timestamp"] = datetime.now().isoformat()
-                writer.writerow(in_row)
+            for record in records:
+                writer.writerow(record)
 
-        # Save table manifest (output.csv.manifest) from the Table definition
+        if not records:
+            logging.warning("No records returned for evidence '%s'", cfg.evidence)
+
         self.write_manifest(table)
+        logging.info("Wrote %d rows for evidence '%s'", len(records), cfg.evidence)
 
-        # Write new state - will be available next run
-        self.write_state_file({"some_state_parameter": "value"})
+    @sync_action("testConnection")
+    def test_connection(self) -> ValidationResult:
+        cfg = Configuration(**self.configuration.parameters)
+        client = self._build_client(cfg)
+        try:
+            client.test_connection()
+        except FlexiBeeClientError as exc:
+            raise UserException(str(exc))
+        return ValidationResult("Connection successful.")
 
-        # ####### EXAMPLE TO REMOVE END
+    @sync_action("listEvidences")
+    def list_evidences(self) -> list[SelectElement]:
+        cfg = Configuration(**self.configuration.parameters)
+        client = self._build_client(cfg)
+        try:
+            evidences = client.list_evidences()
+        except Exception as exc:  # noqa: BLE001
+            raise UserException(f"Could not list evidences: {exc}")
+        return [SelectElement(value=path, label=f"{name} ({path})") for path, name in evidences]
 
 
-"""
-        Main entrypoint
-"""
 if __name__ == "__main__":
     try:
         comp = Component()
-        # this triggers the run method by default and is controlled by the configuration.action parameter
         comp.execute_action()
     except UserException as exc:
         logging.exception(exc)
