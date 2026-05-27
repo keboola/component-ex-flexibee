@@ -118,3 +118,17 @@ class FlexiBeeClient:
                 break
             start += limit
             first = False
+
+    def list_evidences(self) -> list[tuple[str, str]]:
+        """Return (evidencePath, evidenceName) pairs for the connected company."""
+        endpoint = f"c/{self.company}/evidence-list.json"
+        response = self._http.get(endpoint_path=endpoint, verify=self.ssl_verify)
+        evidences = response.json().get("evidences", {}).get("evidence", [])
+        return [(e.get("evidencePath", ""), e.get("evidenceName", "")) for e in evidences]
+
+    def test_connection(self) -> None:
+        """Hit evidence-list to confirm auth/host. Raises FlexiBeeClientError on failure."""
+        try:
+            self.list_evidences()
+        except Exception as exc:  # noqa: BLE001 - surfaced to the user as a connection failure
+            raise FlexiBeeClientError(f"Could not connect to ABRA Flexi: {exc}") from exc

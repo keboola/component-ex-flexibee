@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from client.flexibee_client import FlexiBeeClient  # noqa: E402
+from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError  # noqa: E402
 
 
 def _client():
@@ -119,3 +119,35 @@ def test_iter_records_paginates_until_exhausted():
     assert first_params["limit"] == 2
     assert first_params["detail"] == "full"
     assert second_params["start"] == 2
+
+
+def test_list_evidences_returns_path_name_pairs():
+    c = _client()
+    body = {
+        "evidences": {
+            "evidence": [
+                {"evidencePath": "faktura-vydana", "evidenceName": "Vydane faktury"},
+                {"evidencePath": "adresar", "evidenceName": "Adresy firem"},
+            ]
+        }
+    }
+    resp = mock.Mock()
+    resp.json.return_value = body
+    c._http.get = mock.Mock(return_value=resp)
+
+    result = c.list_evidences()
+    assert result == [
+        ("faktura-vydana", "Vydane faktury"),
+        ("adresar", "Adresy firem"),
+    ]
+
+
+def test_test_connection_raises_on_http_error():
+    c = _client()
+    c._http.get = mock.Mock(side_effect=Exception("401 Unauthorized"))
+    try:
+        c.test_connection()
+    except FlexiBeeClientError as e:
+        assert "connect" in str(e).lower() or "401" in str(e)
+    else:
+        raise AssertionError("expected FlexiBeeClientError")
