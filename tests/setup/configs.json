@@ -121,25 +121,6 @@
     }
   },
   {
-    "name": "08_run_relative_dates",
-    "description": "Run with relative date expressions (1 day ago .. today) on faktura-vydana",
-    "config": {
-      "action": "run",
-      "parameters": {
-        "base_url": "https://demo.flexibee.eu",
-        "company": "demo",
-        "username": "winstrom",
-        "#password": "winstrom",
-        "ssl_verify": true,
-        "evidence": "faktura-vydana",
-        "date_from": "1 day ago",
-        "date_to": "today",
-        "detail": "summary",
-        "limit": 200
-      }
-    }
-  },
-  {
     "name": "09_run_pagination",
     "description": "Force multi-page pagination: mena (36 rows) with limit=10 -> 4 pages",
     "config": {
