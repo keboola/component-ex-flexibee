@@ -1,7 +1,9 @@
-id,lastUpdate,kod,stavUhrK,datVyst,datSplat,sumCelkem,sumZalohy,sumZalohyMen,sumCelkemMen,zbyvaUhraditMen,zbyvaUhradit,mena,mena_ref,mena_showAs,firma,popis
-32379,2026-05-27T09:54:03.102+02:00,VF1-0100001107/2026,,2026-05-27+02:00,2026-06-10+02:00,500.0,0.0,0.0,0.0,0.0,500.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu
-32412,2026-05-27T10:13:58.675+02:00,VF1-0100001108/2026,,2026-05-27+02:00,2026-06-10+02:00,967.0,0.0,0.0,0.0,0.0,967.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu
-32454,2026-05-27T11:27:46.590+02:00,VF1-0100001109/2026,,2026-05-27+02:00,2026-06-10+02:00,1588.0,0.0,0.0,0.0,0.0,1588.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu
-32455,2026-05-27T11:40:08.213+02:00,VF1-0100001110/2026,,2026-05-27+02:00,2026-06-10+02:00,378.0,0.0,0.0,0.0,0.0,378.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu
-32462,2026-05-27T14:12:00.897+02:00,VF1-0100001111/2026,,2026-05-27+02:00,2026-06-10+02:00,1588.0,0.0,0.0,0.0,0.0,1588.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu
-32463,2026-05-27T14:34:09.703+02:00,VF1-0100001112/2026,,2026-05-27+02:00,2026-06-10+02:00,2211.0,0.0,0.0,0.0,0.0,2211.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu
+id,lastUpdate,kod,stavUhrK,datVyst,datSplat,sumCelkem,sumZalohy,sumZalohyMen,sumCelkemMen,zbyvaUhraditMen,zbyvaUhradit,mena,mena_ref,mena_showAs,firma,popis,firma_ref,firma_showAs
+32379,2026-05-27T09:54:03.102+02:00,VF1-0100001107/2026,,2026-05-27+02:00,2026-06-10+02:00,500.0,0.0,0.0,0.0,0.0,500.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,
+32412,2026-05-27T10:13:58.675+02:00,VF1-0100001108/2026,,2026-05-27+02:00,2026-06-10+02:00,967.0,0.0,0.0,0.0,0.0,967.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,
+32454,2026-05-27T11:27:46.590+02:00,VF1-0100001109/2026,,2026-05-27+02:00,2026-06-10+02:00,1588.0,0.0,0.0,0.0,0.0,1588.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,
+32455,2026-05-27T11:40:08.213+02:00,VF1-0100001110/2026,,2026-05-27+02:00,2026-06-10+02:00,378.0,0.0,0.0,0.0,0.0,378.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,
+32462,2026-05-27T14:12:00.897+02:00,VF1-0100001111/2026,,2026-05-27+02:00,2026-06-10+02:00,1588.0,0.0,0.0,0.0,0.0,1588.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,
+32463,2026-05-27T14:34:09.703+02:00,VF1-0100001112/2026,,2026-05-27+02:00,2026-06-10+02:00,2211.0,0.0,0.0,0.0,0.0,2211.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,
+32476,2026-05-27T18:52:04.536+02:00,00003766/26-1,,2026-05-27+02:00,2026-06-10+02:00,777.0,0.0,0.0,0.0,0.0,777.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,code:MATUŠÍK,platba od Matuštíka,/c/demo/adresar/697.json,MATUŠÍK: Jan Matuštík
+32481,2026-05-27T20:33:13.166+02:00,VF1-0100001113/2026,,2026-05-27+02:00,2026-06-10+02:00,107.0,0.0,0.0,0.0,0.0,107.0,code:CZK,/c/demo/mena/31.json,CZK: Česká koruna,,popis dokladu,,

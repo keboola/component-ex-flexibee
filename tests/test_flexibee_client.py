@@ -151,6 +151,60 @@ def test_iter_records_wraps_timeout():
         raise AssertionError("expected FlexiBeeClientError on timeout")
 
 
+def test_get_evidence_properties_returns_name_to_type_map():
+    c = _client()
+    body = {
+        "properties": {
+            "property": [
+                {"propertyName": "id", "type": "integer"},
+                {"propertyName": "kod", "type": "string"},
+                {"propertyName": "sumOsv", "type": "numeric"},
+                {"propertyName": "datObj", "type": "date"},
+                {"propertyName": "lastUpdate", "type": "datetime"},
+                {"propertyName": "postovniShodna", "type": "logic"},
+                {"propertyName": "zamekK", "type": "select"},
+            ]
+        }
+    }
+    c._http.get = mock.Mock(return_value=body)
+    types = c.get_evidence_properties("faktura-vydana")
+    assert types["id"] == "integer"
+    assert types["kod"] == "string"
+    assert types["sumOsv"] == "numeric"
+    assert types["datObj"] == "date"
+    assert types["lastUpdate"] == "datetime"
+    assert types["postovniShodna"] == "logic"
+    assert types["zamekK"] == "select"
+
+
+def test_get_evidence_properties_expands_relation_siblings():
+    c = _client()
+    body = {
+        "properties": {
+            "property": [
+                {"propertyName": "mena", "type": "relation"},
+            ]
+        }
+    }
+    c._http.get = mock.Mock(return_value=body)
+    types = c.get_evidence_properties("faktura-vydana")
+    # The flattener emits `mena`, `mena_ref`, `mena_showAs`; all three must be typed.
+    assert types == {"mena": "relation", "mena_ref": "string", "mena_showAs": "string"}
+
+
+def test_get_evidence_properties_wraps_http_error():
+    import requests
+
+    c = _client()
+    c._http.get = mock.Mock(side_effect=requests.HTTPError("500"))
+    try:
+        c.get_evidence_properties("faktura-vydana")
+    except FlexiBeeClientError as e:
+        assert "faktura-vydana" in str(e)
+    else:
+        raise AssertionError("expected FlexiBeeClientError")
+
+
 def test_test_connection_raises_on_http_error():
     c = _client()
     c._http.get = mock.Mock(side_effect=Exception("401 Unauthorized"))

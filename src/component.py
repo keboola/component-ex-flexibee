@@ -5,11 +5,50 @@ import logging
 
 from keboola.component import ComponentBase, UserException
 from keboola.component.base import sync_action
+from keboola.component.dao import BaseType, ColumnDefinition
 from keboola.component.sync_actions import SelectElement, ValidationResult
 from keboola.vcr import DefaultSanitizer
 
 from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
 from configuration import Configuration
+
+# FlexiBee `type` (from /properties.json) → Keboola Storage base type.
+# `select` and `relation` map to STRING: enum values and FK identifiers are
+# textual in practice. Unknown types also fall back to STRING.
+_FLEXIBEE_TO_BASE_TYPE: dict[str, BaseType] = {
+    "integer": BaseType.integer,
+    "numeric": BaseType.numeric,
+    "date": BaseType.date,
+    "datetime": BaseType.timestamp,
+    "logic": BaseType.boolean,
+    "string": BaseType.string,
+    "select": BaseType.string,
+    "relation": BaseType.string,
+}
+
+
+def _build_typed_schema(
+    columns: list[str],
+    property_types: dict[str, str],
+) -> dict[str, ColumnDefinition]:
+    """Map observed CSV columns onto ColumnDefinitions using FlexiBee property types.
+
+    Columns absent from `property_types` (or with unrecognized types) fall back
+    to STRING — keeps the output safe when FlexiBee adds new fields without us
+    updating the type map.
+    """
+    schema: dict[str, ColumnDefinition] = {}
+    for col in columns:
+        typ = property_types.get(col)
+        builder = _FLEXIBEE_TO_BASE_TYPE.get(typ) if typ else None
+        data_types = builder() if builder else BaseType.string()
+        schema[col] = ColumnDefinition(
+            data_types=data_types,
+            primary_key=(col == "id"),
+            nullable=(col != "id"),
+        )
+    return schema
+
 
 # Picked up automatically by the datadirtest VCR recorder. Strips the HTTP Basic
 # Authorization header (only content-type/length/accept are kept) and redacts
@@ -50,6 +89,16 @@ class Component(ComponentBase):
         incremental = date_from is not None
         logging.info("Extracting evidence '%s' (incremental=%s)", cfg.evidence, incremental)
 
+        # Native-type schema: properties.json is the source of truth for each column's
+        # FlexiBee type. We fetch it best-effort — if the call fails we degrade to an
+        # untyped (all-STRING) schema rather than failing the run, since the data is
+        # already in hand by the time we'd write the manifest.
+        property_types: dict[str, str] = {}
+        try:
+            property_types = client.get_evidence_properties(cfg.evidence)
+        except Exception as exc:  # noqa: BLE001 - native types are best-effort; STRING fallback is safe
+            logging.warning("Skipping native types for '%s': %s", cfg.evidence, exc)
+
         # Buffer records so we can compute the full column union before writing.
         # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
         # so a fixed first-row header would silently drop later fields. Evidence sizes
@@ -87,7 +136,7 @@ class Component(ComponentBase):
             f"{cfg.evidence}.csv",
             primary_key=["id"],
             incremental=incremental,
-            schema=columns,
+            schema=_build_typed_schema(columns, property_types),
             has_header=True,
         )
 

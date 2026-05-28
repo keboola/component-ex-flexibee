@@ -1,6 +1,7 @@
 {
-  "_metadata": {"freeze_time": "2026-05-27T12:00:00", "keboola_vcr_version": "0.5.0", "recorded_at": "2026-05-27T15:46:42.610623+00:00"},
+  "_metadata": {"freeze_time": "2026-05-27T12:00:00", "keboola_vcr_version": "0.5.0", "recorded_at": "2026-05-28T14:38:55.382703+00:00"},
   "interactions": [
+    {"request": {"body": null, "headers": {"Accept": ["*/*"]}, "method": "GET", "uri": "https://demo.flexibee.eu/c/demo/nonexistent-evidence-xyz/properties.json"}, "response": {"body": {"string": "{\"winstrom\":{\"success\":\"false\",\"@version\":\"1.0\",\"message@messageCode\":\"adresaNeplatnaUrl\",\"message\":\"Adresa http://demo.flexibee.eu/c/demo/nonexistent-evidence-xyz/properties nen\u00ed platn\u00e1.\"}}"}, "headers": {"Content-Length": ["192"], "Content-Type": ["application/json"]}, "status": {"code": 404, "message": "Not Found"}}},
     {"request": {"body": null, "headers": {"Accept": ["*/*"]}, "method": "GET", "uri": "https://demo.flexibee.eu/c/demo/nonexistent-evidence-xyz.json?start=0&limit=200&detail=full&add-row-count=true"}, "response": {"body": {"string": "{\"winstrom\":{\"success\":\"false\",\"@version\":\"1.0\",\"message@messageCode\":\"adresaNeplatnaUrl\",\"message\":\"Adresa http://demo.flexibee.eu/c/demo/nonexistent-evidence-xyz?start=0&limit=200&detail=full&add-row-count=true nen\u00ed platn\u00e1.\"}}"}, "headers": {"Content-Length": ["230"], "Content-Type": ["application/json"]}, "status": {"code": 404, "message": "Not Found"}}}
   ],
   "version": 1

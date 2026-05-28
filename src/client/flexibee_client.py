@@ -131,6 +131,31 @@ class FlexiBeeClient:
             start += limit
             first = False
 
+    def get_evidence_properties(self, evidence: str) -> dict[str, str]:
+        """Return {column_name: flexibee_typ} for one evidence.
+
+        `relation` properties are expanded into the three flattened siblings
+        (`x`, `x_ref`, `x_showAs` — all typed as `string`) to match how
+        `flatten_record` emits them in record output.
+        """
+        endpoint = f"c/{self.company}/{evidence}/properties.json"
+        try:
+            data = self._http.get(endpoint_path=endpoint, verify=self.ssl_verify, timeout=self._HTTP_TIMEOUT)
+        except requests.RequestException as exc:
+            raise FlexiBeeClientError(f"Could not fetch properties for evidence '{evidence}': {exc}") from exc
+        properties = data.get("properties", {}).get("property", [])
+        types: dict[str, str] = {}
+        for prop in properties:
+            name = prop.get("propertyName")
+            typ = prop.get("type")
+            if not name or not typ:
+                continue
+            types[name] = typ
+            if typ == "relation":
+                types[f"{name}_ref"] = "string"
+                types[f"{name}_showAs"] = "string"
+        return types
+
     def list_evidences(self) -> list[tuple[str, str]]:
         """Return (evidencePath, evidenceName) pairs for the connected company."""
         endpoint = f"c/{self.company}/evidence-list.json"
