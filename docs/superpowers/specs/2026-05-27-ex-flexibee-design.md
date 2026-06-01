@@ -1,13 +1,13 @@
 # ex-flexibee — Design Spec
 
 > Type: extractor
-> Component ID: keboola.ex-flexibee
+> Component ID: keboola.ex-abra-flexi
 > Status: draft
 > Date: 2026-05-27
 
 ## 1. Overview & source system
 
-`keboola.ex-flexibee` extracts records from **ABRA Flexi** (formerly FlexiBee), a Czech
+`keboola.ex-abra-flexi` extracts records from **ABRA Flexi** (formerly FlexiBee), a Czech
 cloud/on-premise accounting & ERP system, into Keboola Storage. A user picks one or more
 *evidence types* (e.g. issued invoices, address book, bank movements) and the component pulls
 them as tables, optionally restricted to a rolling date window on each record's `lastUpdate`.
@@ -57,7 +57,7 @@ This means `state.json` is **not required** for correctness. (A future v2 could 
 API for delete-capture; see §9.)
 
 **Output bucket / table naming.** Default bucket behaviour applies if enabled in the Developer
-Portal (`in.c-keboola.ex-flexibee-{configId}`). Table names derive from the evidence path
+Portal (`in.c-keboola.ex-abra-flexi-{configId}`). Table names derive from the evidence path
 (e.g. `faktura-vydana`). The component sets `destination` but is aware the platform may override it
 under default-bucket mode.
 
@@ -202,7 +202,7 @@ paths + human names for the `evidence` dropdown. Conditional UI: `custom_fields`
 
 ## 8. Deployment & validation (CF test project)
 
-- Use **kbagent** to register `keboola.ex-flexibee` in the CF test project and create a test config:
+- Use **kbagent** to register `keboola.ex-abra-flexi` in the CF test project and create a test config:
   root config pointing at `demo.flexibee.eu`/`demo`/`winstrom`, with two rows
   (`faktura-vydana` incremental `date_from="30 days ago"`, `adresar` full).
 - Run the config; a successful end-to-end run produces two Storage tables — `faktura-vydana`

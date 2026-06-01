@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `keboola.ex-flexibee`, a config-row-based Keboola extractor that pulls any ABRA Flexi (FlexiBee) evidence type into a Storage table, with an optional rolling date window on `lastUpdate`.
+**Goal:** Build `keboola.ex-abra-flexi`, a config-row-based Keboola extractor that pulls any ABRA Flexi (FlexiBee) evidence type into a Storage table, with an optional rolling date window on `lastUpdate`.
 
 **Architecture:** A thin `Component.run()` orchestrator reads the merged (root + row) config, builds a `FlexiBeeClient` (HTTP Basic auth over `keboola.http_client.HttpClient`), and streams paged records into one output table per row (incremental upsert on `id`). The client owns URL building — including the critical path-based WQL filter — pagination, and record flattening. Two sync actions (`testConnection`, `list_evidences`) back the UI.
 
@@ -1267,7 +1267,7 @@ git commit -m "chore: flexibee full test+lint gate green" || echo "nothing to co
 
 - [ ] **Step 1: Register & configure via kbagent**
 
-Use `kbagent` to register `keboola.ex-flexibee` in the CF test project and create a config with two rows — `faktura-vydana` with `date_from="30 days ago"`, and `adresar` full load. Use the two-step dry-run → confirm → apply flow. For the connection, prefer the **real instance** from `secrets.env` (`WEBSITE`/`USERNAME`/`PASSWORD`); enter `#password` through kbagent's encryption/secure flow so it is stored encrypted and never printed in logs or command output. If putting real credentials in the shared CF test project is undesirable, fall back to the public demo connection. Do not echo the password.
+Use `kbagent` to register `keboola.ex-abra-flexi` in the CF test project and create a config with two rows — `faktura-vydana` with `date_from="30 days ago"`, and `adresar` full load. Use the two-step dry-run → confirm → apply flow. For the connection, prefer the **real instance** from `secrets.env` (`WEBSITE`/`USERNAME`/`PASSWORD`); enter `#password` through kbagent's encryption/secure flow so it is stored encrypted and never printed in logs or command output. If putting real credentials in the shared CF test project is undesirable, fall back to the public demo connection. Do not echo the password.
 
 - [ ] **Step 2: Run the configuration**
 
