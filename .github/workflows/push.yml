@@ -12,6 +12,6 @@ jobs:
   ci:
     uses: keboola/component-ci/.github/workflows/component-pipeline.yml@master
     with:
-      app_id: keboola.ex-flexibee-v2
+      app_id: keboola.ex-abra-flexi
       vendor: keboola
     secrets: inherit
