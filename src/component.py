@@ -10,6 +10,7 @@ from keboola.component.sync_actions import SelectElement, ValidationResult
 from keboola.vcr import DefaultSanitizer
 
 from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
+from client.ssh_tunnel import open_tunnel
 from configuration import Configuration
 
 # FlexiBee `type` (from /properties.json) → Keboola Storage base type.
@@ -62,20 +63,46 @@ class Component(ComponentBase):
     def __init__(self):
         super().__init__()
 
-    def _build_client(self, cfg: Configuration) -> FlexiBeeClient:
+    def _build_client(
+        self,
+        cfg: Configuration,
+        tunnel_base_url: str | None = None,
+        tunnel_original_host: str | None = None,
+    ) -> FlexiBeeClient:
+        """Construct a :class:`FlexiBeeClient` from the parsed configuration.
+
+        When an SSH tunnel is active the caller passes the rewritten ``base_url``
+        (pointing at ``127.0.0.1:<local_port>``) as ``tunnel_base_url`` and the
+        real server hostname as ``tunnel_original_host``.  Those values are
+        forwarded to :class:`FlexiBeeClient` so it can configure TLS correctly.
+        When no tunnel is in use both extra arguments are ``None`` and the
+        behavior is identical to the previous direct-connection path.
+        """
         return FlexiBeeClient(
-            base_url=cfg.base_url,
+            base_url=tunnel_base_url or cfg.base_url,
             company=cfg.company,
             username=cfg.username,
             password=cfg.password,
             ssl_verify=cfg.ssl_verify,
+            tunnel_original_host=tunnel_original_host,
         )
 
     def run(self):
         cfg = Configuration(**self.configuration.parameters)
         if not cfg.evidence:
             raise UserException("No evidence type selected. Choose an evidence type for this row.")
-        client = self._build_client(cfg)
+        # Open the SSH tunnel when configured and enabled; it is a no-op
+        # context manager otherwise so the direct-connection path is unchanged.
+        with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
+            client = self._build_client(cfg, tunnel_base_url, tunnel_original_host)
+            self._run_extraction(cfg, client)
+
+    def _run_extraction(self, cfg: Configuration, client: FlexiBeeClient) -> None:
+        """Execute the evidence extraction with a ready client.
+
+        Separated from ``run()`` so the SSH tunnel context manager wraps
+        the entire extraction without ``run()`` becoming too deeply nested.
+        """
 
         date_from, date_to = cfg.resolve_window()
         wql_parts = []
@@ -157,21 +184,28 @@ class Component(ComponentBase):
     @sync_action("testConnection")
     def test_connection(self) -> ValidationResult:
         cfg = Configuration(**self.configuration.parameters)
-        client = self._build_client(cfg)
-        try:
-            client.test_connection()
-        except FlexiBeeClientError as exc:
-            raise UserException(str(exc))
+        # The tunnel must be open for the connection test too — the test
+        # verifies reachability, which only makes sense through the tunnel
+        # when the server is not directly exposed to the internet.
+        with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
+            client = self._build_client(cfg, tunnel_base_url, tunnel_original_host)
+            try:
+                client.test_connection()
+            except FlexiBeeClientError as exc:
+                raise UserException(str(exc))
         return ValidationResult("Connection successful.")
 
     @sync_action("listEvidences")
     def list_evidences(self) -> list[SelectElement]:
         cfg = Configuration(**self.configuration.parameters)
-        client = self._build_client(cfg)
-        try:
-            evidences = client.list_evidences()
-        except Exception as exc:  # noqa: BLE001
-            raise UserException(f"Could not list evidences: {exc}")
+        # Listing evidences also needs the tunnel — the API call to
+        # evidence-list.json goes to the same protected on-prem host.
+        with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
+            client = self._build_client(cfg, tunnel_base_url, tunnel_original_host)
+            try:
+                evidences = client.list_evidences()
+            except Exception as exc:  # noqa: BLE001
+                raise UserException(f"Could not list evidences: {exc}")
         return [SelectElement(value=path, label=f"{name} ({path})") for path, name in evidences]
 
 

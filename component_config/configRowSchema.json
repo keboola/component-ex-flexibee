@@ -32,7 +32,11 @@
     "detail": {
       "type": "string",
       "title": "Detail level",
+      "description": "How many fields each record includes. **Full** returns the complete record (all fields). **Summary** returns only the core identifying fields (e.g. id, code, name) — smaller and faster. **Custom** returns only the fields you list below.",
       "enum": ["full", "summary", "custom"],
+      "options": {
+        "enum_titles": ["Full", "Summary", "Custom"]
+      },
       "default": "full",
       "propertyOrder": 4
     },
@@ -50,13 +54,19 @@
     "custom_filter": {
       "type": "string",
       "title": "Advanced WQL filter",
-      "description": "Optional raw ABRA Flexi WQL, AND-ed into the lastUpdate window. Use gt/lt, full ISO timestamps.",
+      "description": "Optional raw ABRA Flexi WQL, AND-ed into the Date from/to window.",
+      "options": {
+        "tooltip": "Raw **WQL** expression, written the way it appears inside the URL parentheses: `field operator 'value'`. It is combined with the Date from/to window using `and`.\n\n**Operators:** `eq`, `ne`, `gt`, `lt`, `like`, `is null`, `is empty`. Use `gt`/`lt` for ranges — the API rejects `ge`/`le`. Quote values with single quotes and use full ISO timestamps for dates.\n\n**Examples:**\n- `kod eq 'CODE-001'`\n- `lastUpdate gt '2026-01-01T00:00:00+00:00'`\n- `kod eq 'A' and castka gt 1000`\n\nLeave empty to fetch everything within the date window."
+      },
       "propertyOrder": 6
     },
     "limit": {
       "type": "integer",
       "title": "Page size",
       "default": 200,
+      "options": {
+        "tooltip": "Number of records fetched **per API request** (pagination page size). The extractor automatically pages through *all* matching records — this only controls how many are pulled per HTTP call. Higher values mean fewer requests but larger responses. Default `200`."
+      },
       "propertyOrder": 7
     }
   }

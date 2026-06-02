@@ -8,6 +8,11 @@ dependencies = [
     "keboola-http-client>=1.0.1",
     "keboola-utils>=1.1.0",
     "pydantic>=2.11.7",
+    # SSH tunnel support for on-prem FlexiBee servers behind firewalls.
+    # sshtunnel pulls in paramiko (SSH protocol + key handling).
+    # requests-toolbelt provides HostHeaderSSLAdapter for TLS cert validation over tunnel.
+    "requests-toolbelt>=1.0.0",
+    "sshtunnel>=0.4.0",
 ]
 
 [dependency-groups]
