@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Extracting evidence 'faktura-vydana' (load_type=full_load)",
+      "timestamp": "2026-05-27T12:00:00.000Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 8 rows for evidence 'faktura-vydana'",
+      "timestamp": "2026-05-27T12:00:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Extracting evidence 'mena' (load_type=full_load)",
+      "timestamp": "2026-05-27T12:00:00.000Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 1 rows for evidence 'mena'",
+      "timestamp": "2026-05-27T12:00:00.000Z"
+    }
+  ]
+}

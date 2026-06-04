@@ -1,0 +1,22 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "mena.csv": {
+      "columns": [
+        "id",
+        "kod"
+      ],
+      "hash": "sha256:cab44234de1901a04569e7520d88952d8ca9ef4dab8b0c0b1e2f45261e2696e9",
+      "row_count": 37,
+      "size_bytes": 301
+    },
+    "mena.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:90c6fb0886fc761b75526f18ca8914e9f17c77f7c6fd36cc1fbbd924df9bf5e5",
+      "row_count": null,
+      "size_bytes": 469
+    }
+  },
+  "version": "1.0"
+}

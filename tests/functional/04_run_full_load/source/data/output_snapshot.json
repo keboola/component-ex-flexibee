@@ -1,0 +1,35 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "mena.csv": {
+      "columns": [
+        "id",
+        "lastUpdate",
+        "kod",
+        "nazev",
+        "nazevA",
+        "nazevB",
+        "nazevC",
+        "poznam",
+        "popis",
+        "platiOd",
+        "platiDo",
+        "symbol",
+        "kurzMnozstvi",
+        "zpusobStahKurzK",
+        "zpusobStahKurzK_showAs"
+      ],
+      "hash": "sha256:a7404f5506c9185a5903682a4c9187d8b6bca936a11c014f9b3f13c2b8c4253c",
+      "row_count": 37,
+      "size_bytes": 3634
+    },
+    "mena.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:f7e5986665932d6fabd6388e30a1022e1529e0646755dcc8147563dcfc003991",
+      "row_count": null,
+      "size_bytes": 2389
+    }
+  },
+  "version": "1.0"
+}

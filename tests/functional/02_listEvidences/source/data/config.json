@@ -1,0 +1,10 @@
+{
+  "action": "listEvidences",
+  "parameters": {
+    "base_url": "https://demo.flexibee.eu",
+    "company": "demo",
+    "username": "winstrom",
+    "#password": "winstrom",
+    "ssl_verify": true
+  }
+}

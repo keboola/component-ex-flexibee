@@ -1,0 +1,14 @@
+{
+  "action": "run",
+  "parameters": {
+    "base_url": "https://demo.flexibee.eu",
+    "company": "demo",
+    "username": "winstrom",
+    "#password": "winstrom",
+    "ssl_verify": true,
+    "evidence": "faktura-vydana",
+    "load_type": "incremental_load",
+    "detail": "full",
+    "limit": 200
+  }
+}

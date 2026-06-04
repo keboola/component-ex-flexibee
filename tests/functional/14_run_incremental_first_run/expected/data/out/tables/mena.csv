@@ -1,0 +1,37 @@
+id,lastUpdate,kod,nazev,nazevA,nazevB,nazevC,poznam,popis,platiOd,platiDo,symbol,kurzMnozstvi,zpusobStahKurzK,zpusobStahKurzK_showAs
+2,2025-10-20T14:08:38.953+02:00,AUD,Australský dolar,,,,,,0,9999,,2.0,zpusobStahKurz.denne,Denně
+51,2021-10-12T00:00:00+02:00,BAM,Bosenská marka,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+4,2006-10-20T00:00:00+02:00,BGN,Bulharská leva,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+32,2008-11-04T00:00:00+01:00,BRL,Brazilský real,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+52,2021-10-12T00:00:00+02:00,BYR,Běloruský rubl,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+5,2025-10-14T16:07:33.795+02:00,CAD,Kanadský dolar,,,,,,0,9999,,2.0,zpusobStahKurz.denne,Denně
+33,2008-11-04T00:00:00+01:00,CNY,Čínský jüan,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+31,2024-06-04T15:11:15.460+02:00,CZK,Česká koruna,,,,,,0,9999,Kč,1.0,zpusobStahKurz.rocne,Ročně
+9,2006-10-20T00:00:00+02:00,DKK,Dánská koruna,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+11,2006-10-20T00:00:00+02:00,EUR,Euro,,,,,,1999,9999,€,1.0,zpusobStahKurz.denne,Denně
+14,2025-10-13T15:38:14.126+02:00,GBP,Britská libra,,,,,,0,9999,,2.0,zpusobStahKurz.denne,Denně
+36,2008-11-04T00:00:00+01:00,HKD,Hongkongský dolar,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+16,2006-10-20T00:00:00+02:00,HRK,Chorvatská kuna,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+17,2006-10-20T00:00:00+02:00,HUF,Maďarský forint,,,,,,0,9999,,100.0,zpusobStahKurz.denne,Denně
+6,2021-07-14T12:39:12.971+02:00,CHF,Švýcarský frank,Swiss Franken,Schweitzer Franken,,,,0,9999,,1.0,zpusobStahKurz.nikdy,Nestahovat
+37,2008-11-04T00:00:00+01:00,IDR,Indonéská rupie,,,,,,0,9999,,1000.0,zpusobStahKurz.denne,Denně
+38,2008-11-04T00:00:00+01:00,ISK,Islandská koruna,,,,,,0,9999,,100.0,,
+20,2006-10-20T00:00:00+02:00,JPY,Japonský jen,,,,,,0,9999,,100.0,zpusobStahKurz.denne,Denně
+40,2008-11-04T00:00:00+01:00,KRW,Jihokorejský won,,,,,,0,9999,,100.0,zpusobStahKurz.denne,Denně
+53,2021-10-12T00:00:00+02:00,MDL,Moldavský lei,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+54,2022-10-25T10:14:43.608+02:00,MĚNA JE = M%,Měna,,,,,,0,9999,,1.0,zpusobStahKurz.mesicne,Měsíčně
+44,2008-11-04T00:00:00+01:00,MXN,Mexické peso,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+43,2008-11-04T00:00:00+01:00,MYR,Malajsijský ringgit,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+23,2006-10-20T00:00:00+02:00,NOK,Norská koruna,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+24,2006-10-20T00:00:00+02:00,NZD,Novozélandský dolar,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+35,2008-11-04T00:00:00+01:00,PHP,Filipínské peso,,,,,,0,9999,,100.0,zpusobStahKurz.denne,Denně
+45,2008-11-04T00:00:00+01:00,PLN,Polský zlotý,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+46,2008-11-04T00:00:00+01:00,RON,Rumunský leu,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+47,2008-11-04T00:00:00+01:00,RUB,Ruský rubl,,,,,,0,9999,,100.0,zpusobStahKurz.denne,Denně
+55,2026-01-23T10:52:39.485+01:00,SAR,saudsky ryjad,,,,,,0,9999,S,1.0,zpusobStahKurz.denne,Denně
+26,2006-10-20T00:00:00+02:00,SEK,Švédská koruna,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+48,2008-11-04T00:00:00+01:00,SGD,Singapurský dolar,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+49,2008-11-04T00:00:00+01:00,THB,Thajský baht,,,,,,0,9999,,100.0,zpusobStahKurz.denne,Denně
+50,2008-11-04T00:00:00+01:00,TRY,Nová turecká lira,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně
+28,2006-10-20T00:00:00+02:00,USD,Americký dolar,,,,,,0,9999,$,1.0,zpusobStahKurz.denne,Denně
+39,2008-11-04T00:00:00+01:00,ZAR,Jihoafrický rand,,,,,,0,9999,,1.0,zpusobStahKurz.denne,Denně

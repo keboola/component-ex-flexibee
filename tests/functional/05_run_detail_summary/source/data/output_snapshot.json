@@ -1,0 +1,37 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "faktura-vydana.csv": {
+      "columns": [
+        "id",
+        "lastUpdate",
+        "kod",
+        "stavUhrK",
+        "datVyst",
+        "datSplat",
+        "sumCelkem",
+        "sumZalohy",
+        "sumZalohyMen",
+        "sumCelkemMen",
+        "zbyvaUhraditMen",
+        "zbyvaUhradit",
+        "mena",
+        "mena_ref",
+        "mena_showAs",
+        "firma",
+        "popis"
+      ],
+      "hash": "sha256:4814a5383477a824a27e0a45c4a7af06c383fb6c3ad8d46f7dc7503d4f90853d",
+      "row_count": 7,
+      "size_bytes": 1274
+    },
+    "faktura-vydana.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:f8d98e31702c271523bfb076e1e261d1e5875f6f4c0e8a92fd96cb6346883be1",
+      "row_count": null,
+      "size_bytes": 2688
+    }
+  },
+  "version": "1.0"
+}

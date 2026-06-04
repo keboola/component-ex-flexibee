@@ -1,19 +1,53 @@
 {
   "type": "object",
-  "title": "extractor configuration",
-  "required": [
-    "print_hello"
-  ],
+  "title": "ABRA Flexi connection",
+  "required": ["base_url", "company", "username", "#password"],
   "properties": {
-    "print_hello": {
-      "type": "boolean",
-      "title": "Print Hello",
+    "base_url": {
+      "type": "string",
+      "title": "Base URL",
+      "description": "e.g. https://demo.flexibee.eu or https://your-host:5434",
       "propertyOrder": 1
     },
-    "debug": {
-      "type": "boolean",
-      "title": "Debug",
+    "company": {
+      "type": "string",
+      "title": "Company",
+      "description": "ABRA Flexi company (database) identifier — the segment after `/c/` in the URL, e.g. `demo`.",
       "propertyOrder": 2
+    },
+    "username": {
+      "type": "string",
+      "title": "Username",
+      "propertyOrder": 3
+    },
+    "#password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password",
+      "propertyOrder": 4
+    },
+    "ssh_tunnel": {
+      "type": "object",
+      "title": "SSH Tunnel",
+      "format": "ssh-editor",
+      "propertyOrder": 5
+    },
+    "ssl_verify": {
+      "type": "boolean",
+      "title": "Verify SSL certificate",
+      "default": true,
+      "propertyOrder": 6
+    },
+    "test_connection": {
+      "type": "button",
+      "format": "sync-action",
+      "propertyOrder": 7,
+      "options": {
+        "async": {
+          "label": "Test connection",
+          "action": "testConnection"
+        }
+      }
     }
   }
 }

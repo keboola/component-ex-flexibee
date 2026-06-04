@@ -1,0 +1,24 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "faktura-vydana.csv": {
+      "columns": [
+        "id",
+        "kod",
+        "lastUpdate",
+        "sumCelkem"
+      ],
+      "hash": "sha256:d3ee29a76c096f00af74ef44d14ebd8a70a970f0bd92f00ae8b095c1566297f5",
+      "row_count": 7,
+      "size_bytes": 410
+    },
+    "faktura-vydana.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:e1a3e55742d2d6360e46d63b433c61c32ad10e287929048716fcdc2ae2996845",
+      "row_count": null,
+      "size_bytes": 765
+    }
+  },
+  "version": "1.0"
+}

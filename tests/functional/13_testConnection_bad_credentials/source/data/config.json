@@ -1,0 +1,10 @@
+{
+  "action": "testConnection",
+  "parameters": {
+    "base_url": "https://demo.flexibee.eu",
+    "company": "demo",
+    "username": "winstrom",
+    "#password": "definitely-wrong-password",
+    "ssl_verify": true
+  }
+}
