@@ -18,4 +18,7 @@ secrets.json
 secrets.env
 *.env
 tests/functional/*/source/data/out/
-tests/functional/*/source/data/in/
+# Ignore runtime artifacts under the test input dir, but keep state.json — it is a
+# committed input fixture for incremental tests (e.g. the last_run watermark in 03).
+tests/functional/*/source/data/in/*
+!tests/functional/*/source/data/in/state.json
