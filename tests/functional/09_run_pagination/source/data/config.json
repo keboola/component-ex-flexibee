@@ -7,6 +7,7 @@
     "#password": "winstrom",
     "ssl_verify": true,
     "evidence": "mena",
+    "load_type": "full_load",
     "detail": "custom",
     "custom_fields": "id,kod",
     "limit": 10

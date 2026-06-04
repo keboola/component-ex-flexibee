@@ -2,6 +2,7 @@
 
 import csv
 import logging
+from datetime import UTC, datetime
 
 from keboola.component import ComponentBase, UserException
 from keboola.component.base import sync_action
@@ -12,6 +13,10 @@ from keboola.vcr import DefaultSanitizer
 from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
 from client.ssh_tunnel import open_tunnel
 from configuration import Configuration
+
+# state.json key holding the ISO-8601 UTC timestamp of the last successful run.
+# Used as the `lastUpdate` lower bound for the next incremental extraction.
+_STATE_LAST_RUN = "last_run"
 
 # FlexiBee `type` (from /properties.json) → Keboola Storage base type.
 # `select` and `relation` map to STRING: enum values and FK identifiers are
@@ -91,20 +96,48 @@ class Component(ComponentBase):
         cfg = Configuration(**self.configuration.parameters)
         if not cfg.evidence:
             raise UserException("No evidence type selected. Choose an evidence type for this row.")
+        # Capture the watermark BEFORE fetching so any records modified during the
+        # run are re-fetched next time rather than silently skipped. Persisted to
+        # state.json only after a successful write (see _run_extraction).
+        run_started_at = datetime.now(UTC)
         # Open the SSH tunnel when configured and enabled; it is a no-op
         # context manager otherwise so the direct-connection path is unchanged.
         with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
             client = self._build_client(cfg, tunnel_base_url, tunnel_original_host)
-            self._run_extraction(cfg, client)
+            self._run_extraction(cfg, client, run_started_at)
 
-    def _run_extraction(self, cfg: Configuration, client: FlexiBeeClient) -> None:
+    def _resolve_extraction_window(self, cfg: Configuration) -> tuple[datetime | None, datetime | None]:
+        """Resolve the (date_from, date_to) ``lastUpdate`` window for this run.
+
+        Incremental: the lower bound is the ``last_run`` watermark from ``state.json``;
+        on the first run (no watermark) it falls back to the configured Date from as a
+        seed, or to full history. There is no upper bound — incremental always fetches
+        up to "now". Full load: the explicit manual Date from/to window.
+        """
+        if not cfg.incremental:
+            return cfg.resolve_window()
+
+        state = self.get_state_file() or {}
+        last_run = state.get(_STATE_LAST_RUN)
+        if last_run:
+            try:
+                return datetime.fromisoformat(last_run), None
+            except (TypeError, ValueError):
+                logging.warning("Ignoring unparsable last_run watermark in state: %r", last_run)
+
+        seed_from, _ = cfg.resolve_window()
+        if seed_from is None:
+            logging.info("No state watermark and no Date from set — first incremental run extracts full history.")
+        return seed_from, None
+
+    def _run_extraction(self, cfg: Configuration, client: FlexiBeeClient, run_started_at: datetime) -> None:
         """Execute the evidence extraction with a ready client.
 
         Separated from ``run()`` so the SSH tunnel context manager wraps
         the entire extraction without ``run()`` becoming too deeply nested.
         """
 
-        date_from, date_to = cfg.resolve_window()
+        date_from, date_to = self._resolve_extraction_window(cfg)
         wql_parts = []
         window_wql = client.build_lastupdate_wql(date_from, date_to)
         if window_wql:
@@ -113,8 +146,8 @@ class Component(ComponentBase):
             wql_parts.append(cfg.custom_filter)
         wql = " and ".join(wql_parts) if wql_parts else None
 
-        incremental = date_from is not None
-        logging.info("Extracting evidence '%s' (incremental=%s)", cfg.evidence, incremental)
+        incremental = cfg.incremental
+        logging.info("Extracting evidence '%s' (load_type=%s)", cfg.evidence, cfg.load_type.value)
 
         # Native-type schema: properties.json is the source of truth for each column's
         # FlexiBee type. We fetch it best-effort — if the call fails we degrade to an
@@ -179,6 +212,10 @@ class Component(ComponentBase):
             logging.warning("No records returned for evidence '%s'", cfg.evidence)
 
         self.write_manifest(table)
+        # Advance the watermark only after a successful write — a failed run keeps the
+        # old watermark and is safely retried. Written on every load type so switching
+        # full → incremental later picks up cleanly from this run's start time.
+        self.write_state_file({_STATE_LAST_RUN: run_started_at.isoformat()})
         logging.info("Wrote %d rows for evidence '%s'", len(records), cfg.evidence)
 
     @sync_action("testConnection")

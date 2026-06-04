@@ -7,8 +7,7 @@
     "#password": "winstrom",
     "ssl_verify": true,
     "evidence": "faktura-vydana",
-    "date_from": "2026-05-27",
-    "date_to": "2026-05-28",
+    "load_type": "incremental_load",
     "detail": "full",
     "limit": 200
   }

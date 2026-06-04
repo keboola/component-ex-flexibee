@@ -81,3 +81,32 @@ def test_limit_must_be_positive():
     data = dict(BASE, limit=0)
     with pytest.raises(UserException):
         Configuration(**data)
+
+
+# --- LoadType / incremental field tests ---
+
+
+def test_default_load_type_is_incremental():
+    """Default load_type is incremental_load and incremental property is True."""
+    from configuration import LoadType
+
+    cfg = Configuration(**BASE)
+    assert cfg.load_type == LoadType.incremental_load
+    assert cfg.incremental is True
+
+
+def test_full_load_type_makes_incremental_false():
+    """Explicitly setting full_load makes incremental False."""
+    from configuration import LoadType
+
+    cfg = Configuration(**dict(BASE, load_type="full_load"))
+    assert cfg.load_type == LoadType.full_load
+    assert cfg.incremental is False
+
+
+def test_invalid_load_type_raises_user_exception():
+    """An unrecognized load_type value raises UserException."""
+    from keboola.component import UserException
+
+    with pytest.raises(UserException):
+        Configuration(**dict(BASE, load_type="banana"))

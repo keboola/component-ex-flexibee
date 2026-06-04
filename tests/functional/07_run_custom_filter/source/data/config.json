@@ -7,6 +7,7 @@
     "#password": "winstrom",
     "ssl_verify": true,
     "evidence": "mena",
+    "load_type": "full_load",
     "custom_filter": "kod = 'CZK'",
     "detail": "full",
     "limit": 200

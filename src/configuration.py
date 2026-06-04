@@ -1,9 +1,24 @@
 import logging
 from datetime import datetime
+from enum import StrEnum
 
 from keboola.component.exceptions import UserException
 from keboola.utils.date import parse_datetime_interval
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
+
+
+class LoadType(StrEnum):
+    """How the extractor loads each evidence on every run.
+
+    ``incremental_load`` (the default) drives the ``lastUpdate`` window from the
+    ``last_run`` watermark in ``state.json`` and upserts on the primary key.
+    ``full_load`` ignores the watermark, uses the manual Date from/to window, and
+    overwrites the table.  See ``incremental-state.md`` in the keboola-context skill.
+    """
+
+    full_load = "full_load"
+    incremental_load = "incremental_load"
+
 
 # ---------------------------------------------------------------------------
 # SSH tunnel sub-model
@@ -109,12 +124,20 @@ class Configuration(BaseModel):
     # Optional so sync actions (testConnection, listEvidences) can run at config
     # time before a row's evidence is selected. run() guards that it is set.
     evidence: str = ""
+    # Default to incremental per Keboola convention; the watermark lives in state.json.
+    load_type: LoadType = LoadType.incremental_load
     date_from: str = ""
     date_to: str = ""
     detail: str = "full"
     custom_fields: str = ""
     custom_filter: str = ""
     limit: int = Field(default=200, gt=0)
+
+    @computed_field
+    @property
+    def incremental(self) -> bool:
+        """True when the row loads incrementally (output-mapping upsert + state watermark)."""
+        return self.load_type == LoadType.incremental_load
 
     def __init__(self, **data):
         try:
