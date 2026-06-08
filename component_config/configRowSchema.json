@@ -33,27 +33,32 @@
     "date_from": {
       "type": "string",
       "title": "Date from (lastUpdate)",
-      "description": "**Incremental load:** seed lower bound used on the *first* run only (before any watermark exists). Once a `last_run` watermark is stored in state, this field is ignored and the watermark takes over. **Full load:** lower bound of the `lastUpdate` window applied on every run. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
+      "description": "Lower bound of the `lastUpdate` window. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
+      "options": {
+        "tooltip": "**Incremental load:** seed lower bound used on the *first* run only (before any watermark exists). Once a `last_run` watermark is stored in state, this field is ignored and the watermark takes over.\n\n**Full load:** lower bound of the `lastUpdate` window applied on every run."
+      },
       "propertyOrder": 3
     },
     "date_to": {
       "type": "string",
       "title": "Date to (lastUpdate)",
-      "description": "**Full load only** — upper bound of the `lastUpdate` window. Incremental load always fetches up to *now* and ignores this field. Relative or absolute. Empty = now.",
+      "description": "Full load only — upper bound of the `lastUpdate` window. Relative or absolute. Empty = now.",
       "options": {
         "dependencies": {
           "load_type": "full_load"
-        }
+        },
+        "tooltip": "Incremental load always fetches up to *now* and ignores this field."
       },
       "propertyOrder": 4
     },
     "detail": {
       "type": "string",
       "title": "Detail level",
-      "description": "How many fields each record includes. **Full** returns the complete record (all fields). **Summary** returns only the core identifying fields (e.g. id, code, name) — smaller and faster. **Custom** returns only the fields you list below.",
+      "description": "How many fields each record includes.",
       "enum": ["full", "summary", "custom"],
       "options": {
-        "enum_titles": ["Full", "Summary", "Custom"]
+        "enum_titles": ["Full", "Summary", "Custom"],
+        "tooltip": "**Full** returns the complete record (all fields).\n\n**Summary** returns only the core identifying fields (e.g. id, code, name) — smaller and faster.\n\n**Custom** returns only the fields you list below."
       },
       "default": "full",
       "propertyOrder": 5

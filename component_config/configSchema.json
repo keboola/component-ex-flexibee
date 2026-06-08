@@ -12,7 +12,10 @@
     "company": {
       "type": "string",
       "title": "Company",
-      "description": "ABRA Flexi company (database) identifier — the segment after `/c/` in the URL, e.g. `demo`.",
+      "description": "Company (database) identifier, e.g. `demo`.",
+      "options": {
+        "tooltip": "The segment after `/c/` in the ABRA Flexi URL — identifies which company database to extract from."
+      },
       "propertyOrder": 2
     },
     "username": {
