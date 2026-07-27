@@ -125,6 +125,38 @@ def test_resolve_window_incremental_empty_state_no_date_from(caplog):
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
+def test_run_extraction_no_records_writes_no_table():
+    """Empty result → no CSV/manifest (existing table untouched) but the watermark advances."""
+    import shutil
+    from datetime import UTC
+
+    from client.flexibee_client import EvidenceSchema
+
+    data_dir = _make_datadir({})
+    os.environ["KBC_DATADIR"] = data_dir
+
+    try:
+        comp = Component()
+        cfg = Configuration(**dict(_BASE_PARAMS, load_type="incremental_load"))
+
+        client = type(
+            "StubClient",
+            (),
+            {
+                "build_lastupdate_wql": staticmethod(lambda *_: None),
+                "get_evidence_schema": staticmethod(lambda _: EvidenceSchema(types={"id": "integer"}, id_column="id")),
+                "iter_records": staticmethod(lambda *args, **kwargs: iter(())),
+            },
+        )()
+
+        comp._run_extraction(cfg, client, datetime(2026, 7, 27, tzinfo=UTC))
+
+        assert list((Path(data_dir) / "out" / "tables").iterdir()) == []
+        assert json.loads((Path(data_dir) / "out" / "state.json").read_text())["last_run"].startswith("2026-07-27")
+    finally:
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
 def test_resolve_window_full_load_delegates_to_resolve_window():
     """Full load → delegates to cfg.resolve_window() (uses date_from/to, returns both bounds)."""
     data_dir = _make_datadir(

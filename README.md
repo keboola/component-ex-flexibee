@@ -57,6 +57,9 @@ while `custom` uses the columns you select and `none` writes the table without a
 identifier). Changing the primary key of a table that already exists in Storage requires
 dropping the output table first.
 
+When a run returns no records (e.g. an incremental run with no changes since the last one),
+no table is written and the existing table in Storage is left unchanged.
+
 Development
 -----------
 

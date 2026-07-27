@@ -269,14 +269,20 @@ class Component(ComponentBase):
                     seen.add(key)
                     columns.append(key)
 
+        if not records:
+            # Without records there is no column union, and a header built from the key
+            # alone would not match the columns of an already loaded table (output mapping
+            # rejects it). Skipping the output leaves the existing table untouched.
+            logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
+            self.write_state_file({_STATE_LAST_RUN: run_started_at.isoformat()})
+            return
+
         primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
         if incremental and not primary_key:
             logging.warning(
                 "Incremental load without a primary key appends rows on every run; "
                 "re-fetched records will be duplicated in the table."
             )
-        if not columns:
-            columns = primary_key or ["id"]
 
         table = self.create_out_table_definition(
             f"{cfg.evidence}.csv",
@@ -293,9 +299,6 @@ class Component(ComponentBase):
             writer.writeheader()
             for record in records:
                 writer.writerow(record)
-
-        if not records:
-            logging.warning("No records returned for evidence '%s'", cfg.evidence)
 
         self.write_manifest(table)
         # Advance the watermark only after a successful write — a failed run keeps the
