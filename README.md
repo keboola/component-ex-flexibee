@@ -49,6 +49,14 @@ Output
 
 Provides a list of tables, foreign keys, and schema.
 
+Each evidence is written to its own table. The primary key follows the *Primary key* row
+setting: `auto` (default) takes it from the evidence metadata — `id` on standard evidences,
+the evidence's own key column on derived ones (e.g. `idUcetniDenik` for `ucetni-denik`) —
+while `custom` uses the columns you select and `none` writes the table without a primary key
+(the only option for report evidences such as `rozvaha-po-uctech`, which expose no record
+identifier). Changing the primary key of a table that already exists in Storage requires
+dropping the output table first.
+
 Development
 -----------
 

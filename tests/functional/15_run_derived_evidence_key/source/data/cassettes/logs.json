@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Extracting evidence 'ucetni-denik' (load_type=full_load)",
+      "timestamp": "2026-07-27T15:03:32.562Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 3 rows for evidence 'ucetni-denik'",
+      "timestamp": "2026-07-27T15:03:33.599Z"
+    }
+  ]
+}

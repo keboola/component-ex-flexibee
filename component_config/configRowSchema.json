@@ -25,7 +25,7 @@
       "enum": ["incremental_load", "full_load"],
       "options": {
         "enum_titles": ["Incremental load", "Full load"],
-        "tooltip": "**Incremental load** (default) — fetches only records whose `lastUpdate` is newer than the last successful run. The component stores a `last_run` watermark in `state.json` and upserts records on the primary key `id`. Use *Date from* only on the very first run as a seed lower bound; after that the watermark takes over and *Date from* is ignored.\n\n**Full load** — ignores the watermark entirely, uses the manual *Date from / Date to* window on every run, and **overwrites** the output table. Use this when you need a fixed historical slice or want to rebuild the table from scratch on each run."
+        "tooltip": "**Incremental load** (default) — fetches only records whose `lastUpdate` is newer than the last successful run. The component stores a `last_run` watermark in `state.json` and upserts records on the primary key. Use *Date from* only on the very first run as a seed lower bound; after that the watermark takes over and *Date from* is ignored.\n\n**Full load** — ignores the watermark entirely, uses the manual *Date from / Date to* window on every run, and **overwrites** the output table. Use this when you need a fixed historical slice or want to rebuild the table from scratch on each run."
       },
       "default": "incremental_load",
       "propertyOrder": 2
@@ -78,6 +78,42 @@
       },
       "propertyOrder": 7
     },
+    "primary_key_mode": {
+      "type": "string",
+      "title": "Primary key",
+      "description": "Which columns identify a record in the output table.",
+      "format": "select",
+      "enum": ["auto", "custom", "none"],
+      "options": {
+        "enum_titles": ["Detect automatically", "Select columns", "No primary key"],
+        "tooltip": "**Detect automatically** (default) — reads the key from the evidence metadata: `id` on standard evidences, or the evidence's own key column on derived ones (e.g. `idUcetniDenik` for *Účetní deník*). Evidences that expose no identifier at all (account reports such as `rozvaha-po-uctech`) are loaded without a primary key.\n\n**Select columns** — pick the columns yourself. Make sure the combination is unique per record; with incremental load, non-unique columns silently overwrite rows.\n\n**No primary key** — always load the table without a primary key.\n\nChanging the primary key of a table that already exists in Storage requires dropping the output table first."
+      },
+      "default": "auto",
+      "propertyOrder": 8
+    },
+    "primary_key": {
+      "type": "array",
+      "title": "Primary key columns",
+      "description": "Columns that uniquely identify a record.",
+      "format": "select",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": []
+      },
+      "options": {
+        "tags": true,
+        "async": {
+          "label": "Re-load columns",
+          "action": "getEvidenceColumns",
+          "autoload": ["parameters.evidence"]
+        },
+        "dependencies": {
+          "primary_key_mode": "custom"
+        }
+      },
+      "propertyOrder": 9
+    },
     "limit": {
       "type": "integer",
       "title": "Page size",
@@ -85,7 +121,7 @@
       "options": {
         "tooltip": "Number of records fetched **per API request** (pagination page size). The extractor automatically pages through *all* matching records — this only controls how many are pulled per HTTP call. Higher values mean fewer requests but larger responses. Default `200`."
       },
-      "propertyOrder": 8
+      "propertyOrder": 10
     }
   }
 }

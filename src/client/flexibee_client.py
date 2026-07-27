@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import requests
@@ -12,6 +13,31 @@ from requests_toolbelt.adapters.host_header_ssl import HostHeaderSSLAdapter
 
 class FlexiBeeClientError(Exception):
     """Raised for FlexiBee API errors that should surface to the user."""
+
+
+# FlexiBee property types that can hold a record identifier.
+_KEY_PROPERTY_TYPES = frozenset({"integer", "numeric"})
+
+
+@dataclass(frozen=True)
+class EvidenceSchema:
+    """Column metadata of one evidence, read from ``/properties.json``.
+
+    `id_column` is the property FlexiBee flags with ``inId`` — the record key.
+    Derived evidences (``ucetni-denik``, ``hlavni-kniha``, report views, …) flag
+    none; most of them still carry their own key column under an evidence-specific
+    name (``idUcetniDenik``, ``idObratovaPredvaha``, …), which is what
+    `key_candidates` holds: the ``id``-prefixed integer properties in declaration
+    order, the first one being the evidence's own key.
+    """
+
+    types: dict[str, str] = field(default_factory=dict)
+    id_column: str | None = None
+    key_candidates: tuple[str, ...] = ()
+
+    @property
+    def columns(self) -> list[str]:
+        return list(self.types)
 
 
 class FlexiBeeClient:
@@ -198,8 +224,8 @@ class FlexiBeeClient:
             start += limit
             first = False
 
-    def get_evidence_properties(self, evidence: str) -> dict[str, str]:
-        """Return {column_name: flexibee_typ} for one evidence.
+    def get_evidence_schema(self, evidence: str) -> EvidenceSchema:
+        """Return the column types and key metadata of one evidence.
 
         `relation` properties are expanded into the three flattened siblings
         (`x`, `x_ref`, `x_showAs` — all typed as `string`) to match how
@@ -216,7 +242,11 @@ class FlexiBeeClient:
         except requests.RequestException as exc:
             raise FlexiBeeClientError(f"Could not fetch properties for evidence '{evidence}': {exc}") from exc
         properties = data.get("properties", {}).get("property", [])
+        if isinstance(properties, dict):
+            properties = [properties]
         types: dict[str, str] = {}
+        id_column: str | None = None
+        key_candidates: list[str] = []
         for prop in properties:
             name = prop.get("propertyName")
             typ = prop.get("type")
@@ -226,7 +256,11 @@ class FlexiBeeClient:
             if typ == "relation":
                 types[f"{name}_ref"] = "string"
                 types[f"{name}_showAs"] = "string"
-        return types
+            if prop.get("inId") == "true" and id_column is None:
+                id_column = name
+            if name.startswith("id") and typ in _KEY_PROPERTY_TYPES:
+                key_candidates.append(name)
+        return EvidenceSchema(types=types, id_column=id_column, key_candidates=tuple(key_candidates))
 
     def list_evidences(self) -> list[tuple[str, str]]:
         """Return (evidencePath, evidenceName) pairs for the connected company."""

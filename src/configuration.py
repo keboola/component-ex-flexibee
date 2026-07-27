@@ -4,7 +4,30 @@ from enum import StrEnum
 
 from keboola.component.exceptions import UserException
 from keboola.utils.date import parse_datetime_interval
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    computed_field,
+    field_validator,
+    model_validator,
+)
+
+
+class PrimaryKeyMode(StrEnum):
+    """How the primary key of the output table is determined.
+
+    ``auto`` derives it from the evidence metadata (``/properties.json``), which
+    resolves to ``id`` on standard evidences and to the evidence-specific key
+    (e.g. ``idUcetniDenik``) on derived ones. ``custom`` uses the columns the user
+    picked, ``none`` writes the table without a primary key — the only option for
+    report-style evidences that expose no record identifier at all.
+    """
+
+    auto = "auto"
+    custom = "custom"
+    none = "none"
 
 
 class LoadType(StrEnum):
@@ -132,6 +155,22 @@ class Configuration(BaseModel):
     custom_fields: str = ""
     custom_filter: str = ""
     limit: int = Field(default=200, gt=0)
+    primary_key_mode: PrimaryKeyMode = PrimaryKeyMode.auto
+    primary_key: list[str] = Field(default_factory=list)
+
+    @field_validator("primary_key", mode="before")
+    @classmethod
+    def _split_primary_key(cls, value):
+        """Accept a comma-separated string as well as the UI's list of columns."""
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @model_validator(mode="after")
+    def _validate_primary_key(self) -> "Configuration":
+        if self.primary_key_mode == PrimaryKeyMode.custom and not self.primary_key:
+            raise ValueError("primary_key: select at least one column when Primary key = custom")
+        return self
 
     @computed_field
     @property

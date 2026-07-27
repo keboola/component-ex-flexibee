@@ -10,9 +10,9 @@ from keboola.component.dao import BaseType, ColumnDefinition
 from keboola.component.sync_actions import SelectElement, ValidationResult
 from keboola.vcr import DefaultSanitizer
 
-from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
+from client.flexibee_client import EvidenceSchema, FlexiBeeClient, FlexiBeeClientError
 from client.ssh_tunnel import open_tunnel
-from configuration import Configuration
+from configuration import Configuration, PrimaryKeyMode
 
 # state.json key holding the ISO-8601 UTC timestamp of the last successful run.
 # Used as the `lastUpdate` lower bound for the next incremental extraction.
@@ -33,9 +33,16 @@ _FLEXIBEE_TO_BASE_TYPE: dict[str, BaseType] = {
 }
 
 
+# Values FlexiBee returns for the virtual `id` field of derived evidences: the
+# column is emitted when explicitly requested but carries no record identity, so
+# it must never become a primary key (every row would collapse into one).
+_PLACEHOLDER_ID_VALUES = frozenset({"", "-1", "0"})
+
+
 def _build_typed_schema(
     columns: list[str],
     property_types: dict[str, str],
+    primary_key: list[str] | None = None,
 ) -> dict[str, ColumnDefinition]:
     """Map observed CSV columns onto ColumnDefinitions using FlexiBee property types.
 
@@ -43,6 +50,7 @@ def _build_typed_schema(
     to STRING — keeps the output safe when FlexiBee adds new fields without us
     updating the type map.
     """
+    key_columns = set(primary_key or [])
     schema: dict[str, ColumnDefinition] = {}
     for col in columns:
         typ = property_types.get(col)
@@ -50,10 +58,86 @@ def _build_typed_schema(
         data_types = builder() if builder else BaseType.string()
         schema[col] = ColumnDefinition(
             data_types=data_types,
-            primary_key=(col == "id"),
-            nullable=(col != "id"),
+            primary_key=(col in key_columns),
+            nullable=(col not in key_columns),
         )
     return schema
+
+
+def _is_placeholder_column(column: str, records: list[dict]) -> bool:
+    """True when every record carries a placeholder value in `column`."""
+    return all(str(record.get(column, "")).strip() in _PLACEHOLDER_ID_VALUES for record in records)
+
+
+def _custom_fields_with_key(cfg: Configuration, schema: EvidenceSchema) -> str:
+    """Return the custom field list extended with the columns the key needs.
+
+    A `custom:` detail returns only the listed fields, so a key column left out
+    of the list would be missing from the output and the table would lose its
+    primary key.
+    """
+    if not cfg.custom_fields:
+        return cfg.custom_fields
+
+    if cfg.primary_key_mode == PrimaryKeyMode.custom:
+        needed = list(cfg.primary_key)
+    elif cfg.primary_key_mode == PrimaryKeyMode.auto:
+        # Only the evidence's real key is worth requesting; `id` on a derived
+        # evidence would come back as a placeholder value on every row.
+        auto_key = schema.id_column or next(iter(schema.key_candidates), None)
+        needed = [auto_key] if auto_key else []
+    else:
+        needed = []
+
+    fields = [part.strip() for part in cfg.custom_fields.split(",") if part.strip()]
+    fields.extend(col for col in needed if col not in fields)
+    return ",".join(fields)
+
+
+def _resolve_primary_key(
+    cfg: Configuration,
+    columns: list[str],
+    schema: EvidenceSchema,
+    records: list[dict],
+) -> list[str]:
+    """Resolve the output table primary key for one evidence.
+
+    In ``auto`` mode the key comes from the evidence metadata: the property
+    FlexiBee flags with ``inId`` (``id`` on standard evidences), otherwise the
+    evidence's own ``id``-prefixed key column (``idUcetniDenik`` on
+    ``ucetni-denik``). Report-style evidences expose neither and end up without a
+    primary key.
+    """
+    if cfg.primary_key_mode == PrimaryKeyMode.none:
+        return []
+
+    available = columns or schema.columns
+    if cfg.primary_key_mode == PrimaryKeyMode.custom:
+        missing = [col for col in cfg.primary_key if available and col not in available]
+        if missing:
+            raise UserException(
+                f"Primary key column(s) {', '.join(missing)} are not present in evidence '{cfg.evidence}'. "
+                f"Available columns: {', '.join(available)}."
+            )
+        return list(cfg.primary_key)
+
+    for candidate in (schema.id_column, "id", *schema.key_candidates):
+        if not candidate or candidate not in available:
+            continue
+        # A derived evidence returns `id` only when it is explicitly requested,
+        # and then with a placeholder value on every row — skip it and keep
+        # looking for the evidence's own key column.
+        if records and _is_placeholder_column(candidate, records):
+            logging.warning("Column '%s' holds no record identity in this evidence; skipping it.", candidate)
+            continue
+        return [candidate]
+
+    logging.warning(
+        "Evidence '%s' exposes no identifier column, so the output table has no primary key. "
+        "Set Primary key to 'custom' to choose the columns that identify a record.",
+        cfg.evidence,
+    )
+    return []
 
 
 # Picked up automatically by the datadirtest VCR recorder. Strips the HTTP Basic
@@ -149,15 +233,16 @@ class Component(ComponentBase):
         incremental = cfg.incremental
         logging.info("Extracting evidence '%s' (load_type=%s)", cfg.evidence, cfg.load_type.value)
 
-        # Native-type schema: properties.json is the source of truth for each column's
-        # FlexiBee type. We fetch it best-effort — if the call fails we degrade to an
-        # untyped (all-STRING) schema rather than failing the run, since the data is
-        # already in hand by the time we'd write the manifest.
-        property_types: dict[str, str] = {}
+        # Evidence metadata: properties.json is the source of truth for each column's
+        # FlexiBee type and for the record key. We fetch it best-effort — if the call
+        # fails we degrade to an untyped (all-STRING) schema and key detection from the
+        # returned columns rather than failing the run.
+        evidence_schema = EvidenceSchema()
         try:
-            property_types = client.get_evidence_properties(cfg.evidence)
+            evidence_schema = client.get_evidence_schema(cfg.evidence)
         except Exception as exc:  # noqa: BLE001 - native types are best-effort; STRING fallback is safe
             logging.warning("Skipping native types for '%s': %s", cfg.evidence, exc)
+        property_types = evidence_schema.types
 
         # Buffer records so we can compute the full column union before writing.
         # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
@@ -169,7 +254,7 @@ class Component(ComponentBase):
                     cfg.evidence,
                     wql=wql,
                     detail=cfg.detail,
-                    custom_fields=cfg.custom_fields,
+                    custom_fields=_custom_fields_with_key(cfg, evidence_schema),
                     limit=cfg.limit,
                 )
             )
@@ -184,19 +269,20 @@ class Component(ComponentBase):
                     seen.add(key)
                     columns.append(key)
 
-        if records and "id" not in seen:
-            raise UserException(
-                f"FlexiBee evidence '{cfg.evidence}' returned records without an 'id' field; "
-                "cannot use it as primary key."
+        primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
+        if incremental and not primary_key:
+            logging.warning(
+                "Incremental load without a primary key appends rows on every run; "
+                "re-fetched records will be duplicated in the table."
             )
         if not columns:
-            columns = ["id"]
+            columns = primary_key or ["id"]
 
         table = self.create_out_table_definition(
             f"{cfg.evidence}.csv",
-            primary_key=["id"],
+            primary_key=primary_key,
             incremental=incremental,
-            schema=_build_typed_schema(columns, property_types),
+            schema=_build_typed_schema(columns, property_types, primary_key),
             has_header=True,
         )
 
@@ -244,6 +330,20 @@ class Component(ComponentBase):
             except Exception as exc:  # noqa: BLE001
                 raise UserException(f"Could not list evidences: {exc}")
         return [SelectElement(value=path, label=f"{name} ({path})") for path, name in evidences]
+
+    @sync_action("getEvidenceColumns")
+    def get_evidence_columns(self) -> list[SelectElement]:
+        """List the columns of the selected evidence, for the primary key picker."""
+        cfg = Configuration(**self.configuration.parameters)
+        if not cfg.evidence:
+            raise UserException("Select an evidence type first.")
+        with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
+            client = self._build_client(cfg, tunnel_base_url, tunnel_original_host)
+            try:
+                schema = client.get_evidence_schema(cfg.evidence)
+            except Exception as exc:  # noqa: BLE001
+                raise UserException(f"Could not list columns of evidence '{cfg.evidence}': {exc}")
+        return [SelectElement(value=col, label=f"{col} ({typ})") for col, typ in schema.types.items()]
 
 
 if __name__ == "__main__":
