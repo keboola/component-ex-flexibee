@@ -316,6 +316,14 @@ class Component(ComponentBase):
             # alone would not match the columns of an already loaded table (output mapping
             # rejects it). Skipping the output leaves the existing table untouched.
             logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
+            if incremental and date_from:
+                logging.warning(
+                    "Nothing has changed in '%s' since the last run (lastUpdate > %s). To load the evidence from "
+                    "scratch — for example after deleting the output table — reset the configuration state "
+                    "(RAW configuration editor, Update State tab: {}) or run it once as full load.",
+                    cfg.evidence,
+                    date_from.isoformat(),
+                )
             self.write_state_file({_STATE_LAST_RUN: run_started_at.isoformat()})
             return
 

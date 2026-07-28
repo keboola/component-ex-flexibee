@@ -125,14 +125,15 @@ def test_resolve_window_incremental_empty_state_no_date_from(caplog):
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
-def test_run_extraction_no_records_writes_no_table():
+def test_run_extraction_no_records_writes_no_table(caplog):
     """Empty result → no CSV/manifest (existing table untouched) but the watermark advances."""
+    import logging
     import shutil
     from datetime import UTC
 
     from client.flexibee_client import EvidenceSchema
 
-    data_dir = _make_datadir({})
+    data_dir = _make_datadir({"last_run": "2026-07-01T00:00:00+00:00"})
     os.environ["KBC_DATADIR"] = data_dir
 
     try:
@@ -149,10 +150,12 @@ def test_run_extraction_no_records_writes_no_table():
             },
         )()
 
-        comp._run_extraction(cfg, client, datetime(2026, 7, 27, tzinfo=UTC))
+        with caplog.at_level(logging.WARNING):
+            comp._run_extraction(cfg, client, datetime(2026, 7, 27, tzinfo=UTC))
 
         assert list((Path(data_dir) / "out" / "tables").iterdir()) == []
         assert json.loads((Path(data_dir) / "out" / "state.json").read_text())["last_run"].startswith("2026-07-27")
+        assert any("reset the configuration state" in r.getMessage() for r in caplog.records)
     finally:
         shutil.rmtree(data_dir, ignore_errors=True)
 
