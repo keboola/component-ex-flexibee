@@ -2,7 +2,6 @@
 
 import csv
 import logging
-from datetime import UTC, datetime
 
 from keboola.component import ComponentBase, UserException
 from keboola.component.base import sync_action
@@ -14,16 +13,12 @@ from client.flexibee_client import EvidenceSchema, FlexiBeeClient, FlexiBeeClien
 from client.ssh_tunnel import open_tunnel
 from configuration import Configuration
 
-# FlexiBee property types that can serve as the date window / watermark column.
+# FlexiBee property types offered as the Date Start / Date End window column.
 _DATE_PROPERTY_TYPES = frozenset({"date", "datetime"})
 
 # Fallback date column when the user leaves the "Date field" empty. `lastUpdate`
 # is the record-modification timestamp present on every evidence.
 _DEFAULT_DATE_FIELD = "lastUpdate"
-
-# state.json key holding the ISO-8601 UTC timestamp of the last successful run.
-# Used as the `lastUpdate` lower bound for the next incremental extraction.
-_STATE_LAST_RUN = "last_run"
 
 # FlexiBee `type` (from /properties.json) → Keboola Storage base type.
 # `select` and `relation` map to STRING: enum values and FK identifiers are
@@ -155,8 +150,10 @@ def _resolve_primary_key(
             continue
         candidates.append(candidate)
 
-    # Prefer the first candidate that is unique across the fetched records. Without
-    # records (metadata-only resolution) uniqueness cannot be checked, so the first
+    # Prefer the first candidate that is unique across THIS RUN's fetched records —
+    # not the whole Storage table, so a filtered or first run can look unique by
+    # coincidence; set the Primary key explicitly to override. Without records
+    # (metadata-only resolution) uniqueness cannot be checked, so the first
     # candidate — the evidence's own key by declaration order — is used.
     for candidate in candidates:
         if not records or _is_unique([candidate], records):
@@ -221,48 +218,24 @@ class Component(ComponentBase):
         cfg = Configuration(**self.configuration.parameters)
         if not cfg.evidence:
             raise UserException("No evidence type selected. Choose an evidence type for this row.")
-        # Capture the watermark BEFORE fetching so any records modified during the
-        # run are re-fetched next time rather than silently skipped. Persisted to
-        # state.json only after a successful write (see _run_extraction).
-        run_started_at = datetime.now(UTC)
         # Open the SSH tunnel when configured and enabled; it is a no-op
         # context manager otherwise so the direct-connection path is unchanged.
         with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
             client = self._build_client(cfg, tunnel_base_url, tunnel_original_host)
-            self._run_extraction(cfg, client, run_started_at)
+            self._run_extraction(cfg, client)
 
-    def _resolve_extraction_window(self, cfg: Configuration) -> tuple[datetime | None, datetime | None]:
-        """Resolve the (date_from, date_to) window (on ``cfg.date_field``) for this run.
-
-        Incremental: the lower bound is the ``last_run`` watermark from ``state.json``;
-        on the first run (no watermark) it falls back to the configured Date Start as a
-        seed, or to full history. There is no upper bound — incremental always fetches
-        up to "now". Full load: the explicit manual Date Start / Date End window.
-        """
-        if not cfg.incremental:
-            return cfg.resolve_window()
-
-        state = self.get_state_file() or {}
-        last_run = state.get(_STATE_LAST_RUN)
-        if last_run:
-            try:
-                return datetime.fromisoformat(last_run), None
-            except (TypeError, ValueError):
-                logging.warning("Ignoring unparsable last_run watermark in state: %r", last_run)
-
-        seed_from, _ = cfg.resolve_window()
-        if seed_from is None:
-            logging.info("No state watermark and no Date from set — first incremental run extracts full history.")
-        return seed_from, None
-
-    def _run_extraction(self, cfg: Configuration, client: FlexiBeeClient, run_started_at: datetime) -> None:
+    def _run_extraction(self, cfg: Configuration, client: FlexiBeeClient) -> None:
         """Execute the evidence extraction with a ready client.
 
         Separated from ``run()`` so the SSH tunnel context manager wraps
         the entire extraction without ``run()`` becoming too deeply nested.
+
+        Fetch bounds come solely from the Date Start / Date End window on the
+        configured date field (there is no stateful watermark); ``load_type``
+        only decides whether Storage overwrites or upserts on the primary key.
         """
 
-        date_from, date_to = self._resolve_extraction_window(cfg)
+        date_from, date_to = cfg.resolve_window()
         date_field = cfg.date_field or _DEFAULT_DATE_FIELD
         wql_parts = []
         window_wql = client.build_date_wql(date_field, date_from, date_to)
@@ -314,18 +287,18 @@ class Component(ComponentBase):
         if not records:
             # Without records there is no column union, and a header built from the key
             # alone would not match the columns of an already loaded table (output mapping
-            # rejects it). Skipping the output leaves the existing table untouched.
+            # rejects it). Skipping the output leaves the existing table untouched — the
+            # expected outcome for an incremental/upsert run that returns nothing new.
             logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
-            if incremental and date_from:
+            if cfg.incremental and date_from:
                 logging.warning(
-                    "Nothing has changed in '%s' since the last run (%s > %s). To load the evidence from "
-                    "scratch — for example after deleting the output table — reset the configuration state "
-                    "(RAW configuration editor, Update State tab: {}) or run it once as full load.",
+                    "Evidence '%s' matched no records with %s newer than %s. To reload it from scratch — "
+                    "for example after deleting the output table — widen or clear Date Start, or run it once "
+                    "as full load.",
                     cfg.evidence,
                     date_field,
                     date_from.isoformat(),
                 )
-            self.write_state_file({_STATE_LAST_RUN: run_started_at.isoformat()})
             return
 
         primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
@@ -352,10 +325,6 @@ class Component(ComponentBase):
                 writer.writerow(record)
 
         self.write_manifest(table)
-        # Advance the watermark only after a successful write — a failed run keeps the
-        # old watermark and is safely retried. Written on every load type so switching
-        # full → incremental later picks up cleanly from this run's start time.
-        self.write_state_file({_STATE_LAST_RUN: run_started_at.isoformat()})
         logging.info("Wrote %d rows for evidence '%s'", len(records), cfg.evidence)
 
     @sync_action("testConnection")
@@ -416,7 +385,7 @@ class Component(ComponentBase):
             for col, typ in schema.types.items()
             if typ in _DATE_PROPERTY_TYPES
         ]
-        # `lastUpdate` is the default watermark column and exists on every evidence;
+        # `lastUpdate` is the default date column and exists on every evidence;
         # surface it first even if the metadata call did not enumerate it.
         if not any(el.value == _DEFAULT_DATE_FIELD for el in date_fields):
             date_fields.insert(0, SelectElement(value=_DEFAULT_DATE_FIELD, label=f"{_DEFAULT_DATE_FIELD} (datetime)"))

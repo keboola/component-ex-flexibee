@@ -164,8 +164,8 @@ class FlexiBeeClient:
     ) -> str | None:
         """Build a WQL window over `field`. Returns None when both bounds are absent.
 
-        `field` is the date/datetime column the window (and the incremental
-        watermark) applies to, e.g. `lastUpdate`. Uses `gt` / `lt` (the API rejects
+        `field` is the date/datetime column the window applies to, e.g.
+        `lastUpdate`. Uses `gt` / `lt` (the API rejects
         `ge` / `le`) and full ISO timestamps with offset (the API rejects date-only
         values).
         """

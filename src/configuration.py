@@ -16,12 +16,11 @@ from pydantic import (
 
 
 class LoadType(StrEnum):
-    """How the extractor loads each evidence on every run.
+    """How each evidence is written to Keboola Storage.
 
-    ``incremental_load`` (the default) drives the ``lastUpdate`` window from the
-    ``last_run`` watermark in ``state.json`` and upserts on the primary key.
-    ``full_load`` ignores the watermark, uses the manual Date from/to window, and
-    overwrites the table.  See ``incremental-state.md`` in the keboola-context skill.
+    ``incremental_load`` (the default) upserts records on the primary key;
+    ``full_load`` overwrites the table. Both fetch the same Date Start / Date End
+    window over the configured date field — there is no stateful watermark.
     """
 
     full_load = "full_load"
@@ -132,9 +131,9 @@ class Configuration(BaseModel):
     # Optional so sync actions (testConnection, listEvidences) can run at config
     # time before a row's evidence is selected. run() guards that it is set.
     evidence: str = ""
-    # Default to incremental per Keboola convention; the watermark lives in state.json.
+    # Default to incremental per Keboola convention (Storage upsert on the primary key).
     load_type: LoadType = LoadType.incremental_load
-    # Which date/datetime column the date window and incremental watermark apply to.
+    # Which date/datetime column the Date Start / Date End window applies to.
     # Empty coerces to "lastUpdate" at runtime (see Component). Chosen via the
     # getDateFields sync action, but free-text is allowed (creatable UI field).
     date_field: str = "lastUpdate"
@@ -160,7 +159,7 @@ class Configuration(BaseModel):
     @computed_field
     @property
     def incremental(self) -> bool:
-        """True when the row loads incrementally (output-mapping upsert + state watermark)."""
+        """True when the row loads incrementally (output-mapping upsert on the primary key)."""
         return self.load_type == LoadType.incremental_load
 
     def __init__(self, **data):

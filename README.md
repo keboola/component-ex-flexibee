@@ -61,14 +61,13 @@ from the selected evidence) or type your own. Changing the primary key of a tabl
 exists in Storage requires dropping the output table first.
 
 **Load type & date window.** *Load type* controls how the table is written to Storage:
-*Incremental load* upserts on the primary key and tracks a `last_run` watermark in `state.json`;
-*Full load* overwrites the table on every run. *Date field* selects which date/datetime column the
-*Date Start* / *Date End* window (and the incremental watermark) applies to — it defaults to
-`lastUpdate`; pick another from the field's list or type one. In incremental load, *Date Start*
-seeds only the first run and is ignored afterwards; in full load, *Date Start* / *Date End* bound
-every run.
+*Incremental load* upserts on the primary key; *Full load* overwrites the table on every run.
+*Date field* selects which date/datetime column the *Date Start* / *Date End* window filters on
+(default `lastUpdate`; pick another from the list or type your own). The window is applied on every
+run for both load types — there is no automatic watermark, so bound an incremental load with a
+relative *Date Start* (e.g. "2 days ago") to pull a rolling window of recent changes.
 
-When a run returns no records (e.g. an incremental run with no changes since the last one),
+When a run returns no records (e.g. an incremental run whose window matched nothing new),
 no table is written and the existing table in Storage is left unchanged.
 
 Development

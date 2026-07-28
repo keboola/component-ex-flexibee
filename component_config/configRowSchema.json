@@ -25,7 +25,7 @@
       "enum": ["incremental_load", "full_load"],
       "options": {
         "enum_titles": ["Incremental load", "Full load"],
-        "tooltip": "**Incremental load** (default) — fetches only records whose *Date field* (default `lastUpdate`) is newer than the last successful run. The component stores a `last_run` watermark in `state.json` and upserts records on the primary key. Use *Date Start* only on the very first run as a seed lower bound; after that the watermark takes over and *Date Start* is ignored.\n\n**Full load** — ignores the watermark entirely, uses the manual *Date Start / Date End* window on every run, and **overwrites** the output table. Use this when you need a fixed historical slice or want to rebuild the table from scratch on each run."
+        "tooltip": "**Incremental load** (default) — upserts records into the Storage table on the primary key. **Full load** — overwrites the table on every run. Both fetch the Date Start / Date End window on the chosen Date field; there is no automatic watermark, so bound an incremental load with a relative Date Start (e.g. '2 days ago') to fetch only recent changes."
       },
       "default": "incremental_load",
       "propertyOrder": 2
@@ -33,7 +33,7 @@
     "date_field": {
       "type": "string",
       "title": "Date field",
-      "description": "Which date/datetime column the Date Start / Date End filters and the incremental watermark use.",
+      "description": "Which date/datetime column the Date Start / Date End range filters on.",
       "format": "select",
       "enum": [],
       "options": {
@@ -43,7 +43,7 @@
           "action": "getDateFields",
           "autoload": ["parameters.evidence"]
         },
-        "tooltip": "Which date/datetime column the Date Start / Date End range filters on, and which column the incremental watermark tracks. Pick a column the evidence returns (e.g. `lastUpdate`, `datVyst`) or type one yourself. For incremental load choose a modification timestamp like `lastUpdate` so only changed records are re-fetched. Default `lastUpdate`."
+        "tooltip": "Which date/datetime column the Date Start / Date End range filters on. Pick a column the evidence returns (e.g. `lastUpdate`, `datVyst`) or type one yourself. Default `lastUpdate`."
       },
       "default": "lastUpdate",
       "propertyOrder": 3
@@ -51,18 +51,13 @@
     "date_from": {
       "type": "string",
       "title": "Date Start",
-      "description": "Lower bound of the Date field range. **Incremental load:** used only on the FIRST run as a seed; afterwards the stored watermark takes over and this is ignored. **Full load:** applied on every run. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
+      "description": "Lower bound of the Date field range, applied on every run. For an incremental (upsert) load, set a relative bound like '2 days ago' to pull a rolling window of recent changes. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
       "propertyOrder": 4
     },
     "date_to": {
       "type": "string",
       "title": "Date End",
-      "description": "**Full load only** — upper bound of the Date field range. Incremental load always fetches up to now. Empty = now.",
-      "options": {
-        "dependencies": {
-          "load_type": "full_load"
-        }
-      },
+      "description": "Upper bound of the Date field range, applied on every run. Empty = now.",
       "propertyOrder": 5
     },
     "detail": {

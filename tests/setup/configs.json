@@ -29,7 +29,7 @@
   },
   {
     "name": "03_run_incremental",
-    "description": "Incremental run with a narrow lastUpdate window on faktura-vydana",
+    "description": "Stateless incremental run bounded by an explicit lastUpdate window on faktura-vydana",
     "config": {
       "action": "run",
       "parameters": {
@@ -39,8 +39,9 @@
         "#password": "winstrom",
         "ssl_verify": true,
         "evidence": "faktura-vydana",
-        "date_from": "2026-05-27",
-        "date_to": "2026-05-28",
+        "load_type": "incremental_load",
+        "date_from": "2026-05-27T00:00:00+00:00",
+        "date_to": "2026-05-28T00:00:00+00:00",
         "detail": "full",
         "limit": 200
       }

@@ -5,26 +5,14 @@
     {
       "level": "INFO",
       "logger": "root",
-      "message": "Loading state file..",
-      "timestamp": "2026-07-28T11:07:51.288Z"
-    },
-    {
-      "level": "INFO",
-      "logger": "root",
-      "message": "No state watermark and no Date from set \u2014 first incremental run extracts full history.",
-      "timestamp": "2026-07-28T11:07:51.288Z"
-    },
-    {
-      "level": "INFO",
-      "logger": "root",
       "message": "Extracting evidence 'ucetni-denik' (load_type=incremental_load)",
-      "timestamp": "2026-07-28T11:07:51.288Z"
+      "timestamp": "2026-07-28T16:52:41.000Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 3 rows for evidence 'ucetni-denik'",
-      "timestamp": "2026-07-28T11:07:51.657Z"
+      "timestamp": "2026-07-28T16:52:41.000Z"
     }
   ]
 }
