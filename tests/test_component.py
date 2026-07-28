@@ -143,7 +143,7 @@ def test_run_extraction_no_records_writes_no_table():
             "StubClient",
             (),
             {
-                "build_lastupdate_wql": staticmethod(lambda *_: None),
+                "build_date_wql": staticmethod(lambda *_: None),
                 "get_evidence_schema": staticmethod(lambda _: EvidenceSchema(types={"id": "integer"}, id_column="id")),
                 "iter_records": staticmethod(lambda *args, **kwargs: iter(())),
             },

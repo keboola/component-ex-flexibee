@@ -19,6 +19,15 @@ class FlexiBeeClientError(Exception):
 _KEY_PROPERTY_TYPES = frozenset({"integer", "numeric"})
 
 
+def _looks_like_key_column(name: str) -> bool:
+    """True for FlexiBee id-style key columns: exactly ``id`` or ``id<Capital>…``.
+
+    Matches ``id``, ``idUcetniDenik``, ``idDokl``; rejects incidental names such as
+    ``idealniHodnota`` where ``id`` merely prefixes a lowercase word.
+    """
+    return name == "id" or (name.startswith("id") and len(name) > 2 and name[2].isupper())
+
+
 @dataclass(frozen=True)
 class EvidenceSchema:
     """Column metadata of one evidence, read from ``/properties.json``.
@@ -147,21 +156,24 @@ class FlexiBeeClient:
 
     _WQL_TS_FORMAT = "%Y-%m-%dT%H:%M:%S+00:00"
 
-    def build_lastupdate_wql(
+    def build_date_wql(
         self,
+        field: str,
         date_from: datetime | None,
         date_to: datetime | None,
     ) -> str | None:
-        """Build a WQL `lastUpdate` window. Returns None when both bounds are absent.
+        """Build a WQL window over `field`. Returns None when both bounds are absent.
 
-        Uses `gt` / `lt` (the API rejects `ge` / `le`) and full ISO timestamps with
-        offset (the API rejects date-only values).
+        `field` is the date/datetime column the window (and the incremental
+        watermark) applies to, e.g. `lastUpdate`. Uses `gt` / `lt` (the API rejects
+        `ge` / `le`) and full ISO timestamps with offset (the API rejects date-only
+        values).
         """
         clauses: list[str] = []
         if date_from is not None:
-            clauses.append(f"lastUpdate gt '{date_from.strftime(self._WQL_TS_FORMAT)}'")
+            clauses.append(f"{field} gt '{date_from.strftime(self._WQL_TS_FORMAT)}'")
         if date_to is not None:
-            clauses.append(f"lastUpdate lt '{date_to.strftime(self._WQL_TS_FORMAT)}'")
+            clauses.append(f"{field} lt '{date_to.strftime(self._WQL_TS_FORMAT)}'")
         if not clauses:
             return None
         return " and ".join(clauses)
@@ -258,7 +270,7 @@ class FlexiBeeClient:
                 types[f"{name}_showAs"] = "string"
             if prop.get("inId") == "true" and id_column is None:
                 id_column = name
-            if name.startswith("id") and typ in _KEY_PROPERTY_TYPES:
+            if _looks_like_key_column(name) and typ in _KEY_PROPERTY_TYPES:
                 key_candidates.append(name)
         return EvidenceSchema(types=types, id_column=id_column, key_candidates=tuple(key_candidates))
 

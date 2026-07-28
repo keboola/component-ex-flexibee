@@ -1,0 +1,15 @@
+{
+  "action": "run",
+  "parameters": {
+    "base_url": "https://demo.flexibee.eu",
+    "company": "demo",
+    "username": "winstrom",
+    "#password": "winstrom",
+    "ssl_verify": true,
+    "evidence": "ucetni-denik",
+    "load_type": "incremental_load",
+    "detail": "full",
+    "custom_filter": "idDokl eq 15173",
+    "limit": 200
+  }
+}

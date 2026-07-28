@@ -15,21 +15,6 @@ from pydantic import (
 )
 
 
-class PrimaryKeyMode(StrEnum):
-    """How the primary key of the output table is determined.
-
-    ``auto`` derives it from the evidence metadata (``/properties.json``), which
-    resolves to ``id`` on standard evidences and to the evidence-specific key
-    (e.g. ``idUcetniDenik``) on derived ones. ``custom`` uses the columns the user
-    picked, ``none`` writes the table without a primary key — the only option for
-    report-style evidences that expose no record identifier at all.
-    """
-
-    auto = "auto"
-    custom = "custom"
-    none = "none"
-
-
 class LoadType(StrEnum):
     """How the extractor loads each evidence on every run.
 
@@ -149,13 +134,19 @@ class Configuration(BaseModel):
     evidence: str = ""
     # Default to incremental per Keboola convention; the watermark lives in state.json.
     load_type: LoadType = LoadType.incremental_load
+    # Which date/datetime column the date window and incremental watermark apply to.
+    # Empty coerces to "lastUpdate" at runtime (see Component). Chosen via the
+    # getDateFields sync action, but free-text is allowed (creatable UI field).
+    date_field: str = "lastUpdate"
     date_from: str = ""
     date_to: str = ""
     detail: str = "full"
     custom_fields: str = ""
     custom_filter: str = ""
     limit: int = Field(default=200, gt=0)
-    primary_key_mode: PrimaryKeyMode = PrimaryKeyMode.auto
+    # Empty => auto-detect the key from the evidence metadata (see _resolve_primary_key).
+    # Non-empty => use these columns verbatim. Creatable UI field: values may be picked
+    # from getEvidenceColumns or typed by hand, and arrive as a list or a CSV string.
     primary_key: list[str] = Field(default_factory=list)
 
     @field_validator("primary_key", mode="before")
@@ -165,12 +156,6 @@ class Configuration(BaseModel):
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value
-
-    @model_validator(mode="after")
-    def _validate_primary_key(self) -> "Configuration":
-        if self.primary_key_mode == PrimaryKeyMode.custom and not self.primary_key:
-            raise ValueError("primary_key: select at least one column when Primary key = custom")
-        return self
 
     @computed_field
     @property

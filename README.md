@@ -49,13 +49,24 @@ Output
 
 Provides a list of tables, foreign keys, and schema.
 
-Each evidence is written to its own table. The primary key follows the *Primary key* row
-setting: `auto` (default) takes it from the evidence metadata — `id` on standard evidences,
-the evidence's own key column on derived ones (e.g. `idUcetniDenik` for `ucetni-denik`) —
-while `custom` uses the columns you select and `none` writes the table without a primary key
-(the only option for report evidences such as `rozvaha-po-uctech`, which expose no record
-identifier). Changing the primary key of a table that already exists in Storage requires
-dropping the output table first.
+Each evidence is written to its own table.
+
+**Primary key.** Leave the *Primary key* field empty (the default) and the component
+auto-detects the key from the evidence metadata — `id` on standard evidences, the evidence's own
+key column on derived ones (e.g. `idUcetniDenik` for `ucetni-denik`). If none of the candidate
+columns is unique across the fetched records — or the evidence exposes no identifier at all
+(report views such as `rozvaha-po-uctech`) — the table is loaded without a primary key rather
+than silently overwriting rows. To override the detection, pick columns from the list (populated
+from the selected evidence) or type your own. Changing the primary key of a table that already
+exists in Storage requires dropping the output table first.
+
+**Load type & date window.** *Load type* controls how the table is written to Storage:
+*Incremental load* upserts on the primary key and tracks a `last_run` watermark in `state.json`;
+*Full load* overwrites the table on every run. *Date field* selects which date/datetime column the
+*Date Start* / *Date End* window (and the incremental watermark) applies to — it defaults to
+`lastUpdate`; pick another from the field's list or type one. In incremental load, *Date Start*
+seeds only the first run and is ignored afterwards; in full load, *Date Start* / *Date End* bound
+every run.
 
 When a run returns no records (e.g. an incremental run with no changes since the last one),
 no table is written and the existing table in Storage is left unchanged.

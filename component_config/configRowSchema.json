@@ -25,27 +25,45 @@
       "enum": ["incremental_load", "full_load"],
       "options": {
         "enum_titles": ["Incremental load", "Full load"],
-        "tooltip": "**Incremental load** (default) — fetches only records whose `lastUpdate` is newer than the last successful run. The component stores a `last_run` watermark in `state.json` and upserts records on the primary key. Use *Date from* only on the very first run as a seed lower bound; after that the watermark takes over and *Date from* is ignored.\n\n**Full load** — ignores the watermark entirely, uses the manual *Date from / Date to* window on every run, and **overwrites** the output table. Use this when you need a fixed historical slice or want to rebuild the table from scratch on each run."
+        "tooltip": "**Incremental load** (default) — fetches only records whose *Date field* (default `lastUpdate`) is newer than the last successful run. The component stores a `last_run` watermark in `state.json` and upserts records on the primary key. Use *Date Start* only on the very first run as a seed lower bound; after that the watermark takes over and *Date Start* is ignored.\n\n**Full load** — ignores the watermark entirely, uses the manual *Date Start / Date End* window on every run, and **overwrites** the output table. Use this when you need a fixed historical slice or want to rebuild the table from scratch on each run."
       },
       "default": "incremental_load",
       "propertyOrder": 2
     },
+    "date_field": {
+      "type": "string",
+      "title": "Date field",
+      "description": "Which date/datetime column the Date Start / Date End filters and the incremental watermark use.",
+      "format": "select",
+      "enum": [],
+      "options": {
+        "creatable": true,
+        "async": {
+          "label": "Re-load date fields",
+          "action": "getDateFields",
+          "autoload": ["parameters.evidence"]
+        },
+        "tooltip": "Which date/datetime column the Date Start / Date End range filters on, and which column the incremental watermark tracks. Pick a column the evidence returns (e.g. `lastUpdate`, `datVyst`) or type one yourself. For incremental load choose a modification timestamp like `lastUpdate` so only changed records are re-fetched. Default `lastUpdate`."
+      },
+      "default": "lastUpdate",
+      "propertyOrder": 3
+    },
     "date_from": {
       "type": "string",
-      "title": "Date from (lastUpdate)",
-      "description": "**Incremental load:** seed lower bound used on the *first* run only (before any watermark exists). Once a `last_run` watermark is stored in state, this field is ignored and the watermark takes over. **Full load:** lower bound of the `lastUpdate` window applied on every run. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
-      "propertyOrder": 3
+      "title": "Date Start",
+      "description": "Lower bound of the Date field range. **Incremental load:** used only on the FIRST run as a seed; afterwards the stored watermark takes over and this is ignored. **Full load:** applied on every run. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
+      "propertyOrder": 4
     },
     "date_to": {
       "type": "string",
-      "title": "Date to (lastUpdate)",
-      "description": "**Full load only** — upper bound of the `lastUpdate` window. Incremental load always fetches up to *now* and ignores this field. Relative or absolute. Empty = now.",
+      "title": "Date End",
+      "description": "**Full load only** — upper bound of the Date field range. Incremental load always fetches up to now. Empty = now.",
       "options": {
         "dependencies": {
           "load_type": "full_load"
         }
       },
-      "propertyOrder": 4
+      "propertyOrder": 5
     },
     "detail": {
       "type": "string",
@@ -56,13 +74,13 @@
         "enum_titles": ["Full", "Summary", "Custom"]
       },
       "default": "full",
-      "propertyOrder": 5
+      "propertyOrder": 6
     },
     "custom_fields": {
       "type": "string",
       "title": "Custom fields",
       "description": "Comma-separated field list (used when Detail level = custom)",
-      "propertyOrder": 6,
+      "propertyOrder": 7,
       "options": {
         "dependencies": {
           "detail": "custom"
@@ -72,29 +90,16 @@
     "custom_filter": {
       "type": "string",
       "title": "Advanced WQL filter",
-      "description": "Optional raw ABRA Flexi WQL, AND-ed into the Date from/to window.",
+      "description": "Optional raw ABRA Flexi WQL, AND-ed into the Date Start / Date End window.",
       "options": {
-        "tooltip": "Raw **WQL** expression, written the way it appears inside the URL parentheses: `field operator 'value'`. It is combined with the Date from/to window using `and`.\n\n**Operators:** `eq`, `ne`, `gt`, `lt`, `like`, `is null`, `is empty`. Use `gt`/`lt` for ranges — the API rejects `ge`/`le`. Quote values with single quotes and use full ISO timestamps for dates.\n\n**Examples:**\n- `kod eq 'CODE-001'`\n- `lastUpdate gt '2026-01-01T00:00:00+00:00'`\n- `kod eq 'A' and castka gt 1000`\n\nLeave empty to fetch everything within the date window."
+        "tooltip": "Raw **WQL** expression, written the way it appears inside the URL parentheses: `field operator 'value'`. It is combined with the Date Start / Date End window using `and`.\n\n**Operators:** `eq`, `ne`, `gt`, `lt`, `like`, `is null`, `is empty`. Use `gt`/`lt` for ranges — the API rejects `ge`/`le`. Quote values with single quotes and use full ISO timestamps for dates.\n\n**Examples:**\n- `kod eq 'CODE-001'`\n- `lastUpdate gt '2026-01-01T00:00:00+00:00'`\n- `kod eq 'A' and castka gt 1000`\n\nLeave empty to fetch everything within the date window."
       },
-      "propertyOrder": 7
-    },
-    "primary_key_mode": {
-      "type": "string",
-      "title": "Primary key",
-      "description": "Which columns identify a record in the output table.",
-      "format": "select",
-      "enum": ["auto", "custom", "none"],
-      "options": {
-        "enum_titles": ["Detect automatically", "Select columns", "No primary key"],
-        "tooltip": "**Detect automatically** (default) — reads the key from the evidence metadata: `id` on standard evidences, or the evidence's own key column on derived ones (e.g. `idUcetniDenik` for *Účetní deník*). Evidences that expose no identifier at all (account reports such as `rozvaha-po-uctech`) are loaded without a primary key.\n\n**Select columns** — pick the columns yourself. Make sure the combination is unique per record; with incremental load, non-unique columns silently overwrite rows.\n\n**No primary key** — always load the table without a primary key.\n\nChanging the primary key of a table that already exists in Storage requires dropping the output table first."
-      },
-      "default": "auto",
       "propertyOrder": 8
     },
     "primary_key": {
       "type": "array",
-      "title": "Primary key columns",
-      "description": "Columns that uniquely identify a record.",
+      "title": "Primary key",
+      "description": "Columns that uniquely identify a record. Leave empty to auto-detect.",
       "format": "select",
       "uniqueItems": true,
       "items": {
@@ -108,9 +113,7 @@
           "action": "getEvidenceColumns",
           "autoload": ["parameters.evidence"]
         },
-        "dependencies": {
-          "primary_key_mode": "custom"
-        }
+        "tooltip": "Columns that uniquely identify a record, used for incremental upsert. **Leave empty to auto-detect** from the evidence metadata (`id` on standard evidences, the evidence's own key such as `idUcetniDenik` on derived ones; report views load without a key). Pick columns from the list or type your own to override. Non-unique columns silently overwrite rows under incremental load. Changing the key of a table that already exists in Storage requires dropping the output table first."
       },
       "propertyOrder": 9
     },

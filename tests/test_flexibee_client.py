@@ -30,24 +30,32 @@ def test_build_evidence_path_with_filter_goes_in_path_not_query():
     assert "?filter=" not in path
 
 
-def test_build_lastupdate_wql_both_bounds():
+def test_build_date_wql_both_bounds():
     c = _client()
-    wql = c.build_lastupdate_wql(
+    wql = c.build_date_wql(
+        "lastUpdate",
         datetime(2026, 5, 1, 0, 0, 0),
         datetime(2026, 5, 27, 23, 59, 59),
     )
     assert wql == ("lastUpdate gt '2026-05-01T00:00:00+00:00' and lastUpdate lt '2026-05-27T23:59:59+00:00'")
 
 
-def test_build_lastupdate_wql_from_only():
+def test_build_date_wql_from_only():
     c = _client()
-    wql = c.build_lastupdate_wql(datetime(2026, 5, 1, 0, 0, 0), None)
+    wql = c.build_date_wql("lastUpdate", datetime(2026, 5, 1, 0, 0, 0), None)
     assert wql == "lastUpdate gt '2026-05-01T00:00:00+00:00'"
 
 
-def test_build_lastupdate_wql_none_returns_none():
+def test_build_date_wql_none_returns_none():
     c = _client()
-    assert c.build_lastupdate_wql(None, None) is None
+    assert c.build_date_wql("lastUpdate", None, None) is None
+
+
+def test_build_date_wql_honours_custom_field():
+    # The window column is configurable (the "Date field" picker), not hardcoded.
+    c = _client()
+    wql = c.build_date_wql("datVyst", datetime(2026, 5, 1, 0, 0, 0), None)
+    assert wql == "datVyst gt '2026-05-01T00:00:00+00:00'"
 
 
 def test_flatten_record_reference_fields():
@@ -227,6 +235,24 @@ def test_get_evidence_schema_collects_key_candidates_in_declaration_order():
     assert schema.id_column is None
     assert schema.key_candidates == ("idUcetniDenik", "idDokl")
     assert schema.columns == ["idUcetniDenik", "doklad", "idDokl", "idPolozek"]
+
+
+def test_get_evidence_schema_ignores_id_prefixed_non_key_columns():
+    # Only `id` or `id<Capital>...` columns are keys. A numeric field that merely
+    # starts with the letters "id" (e.g. `idealniStav`) must NOT become a candidate.
+    c = _client()
+    body = {
+        "properties": {
+            "property": [
+                {"propertyName": "idUcetniDenik", "type": "integer"},
+                {"propertyName": "idealniStav", "type": "numeric"},
+                {"propertyName": "identifikator", "type": "string"},
+            ]
+        }
+    }
+    c._http.get = mock.Mock(return_value=body)
+    schema = c.get_evidence_schema("ucetni-denik")
+    assert schema.key_candidates == ("idUcetniDenik",)
 
 
 def test_get_evidence_schema_wraps_http_error():
