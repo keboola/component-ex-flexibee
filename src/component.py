@@ -318,10 +318,11 @@ class Component(ComponentBase):
             logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
             if incremental and date_from:
                 logging.warning(
-                    "Nothing has changed in '%s' since the last run (lastUpdate > %s). To load the evidence from "
+                    "Nothing has changed in '%s' since the last run (%s > %s). To load the evidence from "
                     "scratch — for example after deleting the output table — reset the configuration state "
                     "(RAW configuration editor, Update State tab: {}) or run it once as full load.",
                     cfg.evidence,
+                    date_field,
                     date_from.isoformat(),
                 )
             self.write_state_file({_STATE_LAST_RUN: run_started_at.isoformat()})
