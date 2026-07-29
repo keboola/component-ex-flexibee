@@ -6,11 +6,10 @@
     "username": "winstrom",
     "#password": "winstrom",
     "ssl_verify": true,
-    "evidence": "faktura-vydana",
-    "load_type": "incremental_load",
-    "date_from": "2026-05-27T00:00:00+00:00",
-    "date_to": "2026-05-28T00:00:00+00:00",
+    "evidence": "ucetni-denik",
+    "load_type": "full_load",
     "detail": "full",
+    "custom_filter": "idDokl eq 15173",
     "limit": 200
   }
 }

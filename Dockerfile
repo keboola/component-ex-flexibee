@@ -10,6 +10,7 @@ RUN uv sync --all-groups --frozen
 COPY src/ src/
 COPY scripts/ scripts/
 COPY tests/ tests/
+COPY component_config/ component_config/
 
 RUN uv run ruff check src/ tests/
 

@@ -49,6 +49,27 @@ Output
 
 Provides a list of tables, foreign keys, and schema.
 
+Each evidence is written to its own table.
+
+**Primary key.** Leave the *Primary key* field empty (the default) and the component
+auto-detects the key from the evidence metadata — `id` on standard evidences, the evidence's own
+key column on derived ones (e.g. `idUcetniDenik` for `ucetni-denik`). If none of the candidate
+columns is unique across the fetched records — or the evidence exposes no identifier at all
+(report views such as `rozvaha-po-uctech`) — the table is loaded without a primary key rather
+than silently overwriting rows. To override the detection, pick columns from the list (populated
+from the selected evidence) or type your own. Changing the primary key of a table that already
+exists in Storage requires dropping the output table first.
+
+**Load type & date window.** *Load type* controls how the table is written to Storage:
+*Incremental load* upserts on the primary key; *Full load* overwrites the table on every run.
+*Date field* selects which date/datetime column the *Date Start* / *Date End* window filters on
+(default `lastUpdate`; pick another from the list or type your own). The window is applied on every
+run for both load types — there is no automatic watermark, so bound an incremental load with a
+relative *Date Start* (e.g. "2 days ago") to pull a rolling window of recent changes.
+
+When a run returns no records (e.g. an incremental run whose window matched nothing new),
+no table is written and the existing table in Storage is left unchanged.
+
 Development
 -----------
 

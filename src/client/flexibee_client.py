@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import requests
@@ -12,6 +13,40 @@ from requests_toolbelt.adapters.host_header_ssl import HostHeaderSSLAdapter
 
 class FlexiBeeClientError(Exception):
     """Raised for FlexiBee API errors that should surface to the user."""
+
+
+# FlexiBee property types that can hold a record identifier.
+_KEY_PROPERTY_TYPES = frozenset({"integer", "numeric"})
+
+
+def _looks_like_key_column(name: str) -> bool:
+    """True for FlexiBee id-style key columns: exactly ``id`` or ``id<Capital>…``.
+
+    Matches ``id``, ``idUcetniDenik``, ``idDokl``; rejects incidental names such as
+    ``idealniHodnota`` where ``id`` merely prefixes a lowercase word.
+    """
+    return name == "id" or (name.startswith("id") and len(name) > 2 and name[2].isupper())
+
+
+@dataclass(frozen=True)
+class EvidenceSchema:
+    """Column metadata of one evidence, read from ``/properties.json``.
+
+    `id_column` is the property FlexiBee flags with ``inId`` — the record key.
+    Derived evidences (``ucetni-denik``, ``hlavni-kniha``, report views, …) flag
+    none; most of them still carry their own key column under an evidence-specific
+    name (``idUcetniDenik``, ``idObratovaPredvaha``, …), which is what
+    `key_candidates` holds: the ``id``-prefixed integer properties in declaration
+    order, the first one being the evidence's own key.
+    """
+
+    types: dict[str, str] = field(default_factory=dict)
+    id_column: str | None = None
+    key_candidates: tuple[str, ...] = ()
+
+    @property
+    def columns(self) -> list[str]:
+        return list(self.types)
 
 
 class FlexiBeeClient:
@@ -121,21 +156,24 @@ class FlexiBeeClient:
 
     _WQL_TS_FORMAT = "%Y-%m-%dT%H:%M:%S+00:00"
 
-    def build_lastupdate_wql(
+    def build_date_wql(
         self,
+        field: str,
         date_from: datetime | None,
         date_to: datetime | None,
     ) -> str | None:
-        """Build a WQL `lastUpdate` window. Returns None when both bounds are absent.
+        """Build a WQL window over `field`. Returns None when both bounds are absent.
 
-        Uses `gt` / `lt` (the API rejects `ge` / `le`) and full ISO timestamps with
-        offset (the API rejects date-only values).
+        `field` is the date/datetime column the window applies to, e.g.
+        `lastUpdate`. Uses `gt` / `lt` (the API rejects
+        `ge` / `le`) and full ISO timestamps with offset (the API rejects date-only
+        values).
         """
         clauses: list[str] = []
         if date_from is not None:
-            clauses.append(f"lastUpdate gt '{date_from.strftime(self._WQL_TS_FORMAT)}'")
+            clauses.append(f"{field} gt '{date_from.strftime(self._WQL_TS_FORMAT)}'")
         if date_to is not None:
-            clauses.append(f"lastUpdate lt '{date_to.strftime(self._WQL_TS_FORMAT)}'")
+            clauses.append(f"{field} lt '{date_to.strftime(self._WQL_TS_FORMAT)}'")
         if not clauses:
             return None
         return " and ".join(clauses)
@@ -198,8 +236,8 @@ class FlexiBeeClient:
             start += limit
             first = False
 
-    def get_evidence_properties(self, evidence: str) -> dict[str, str]:
-        """Return {column_name: flexibee_typ} for one evidence.
+    def get_evidence_schema(self, evidence: str) -> EvidenceSchema:
+        """Return the column types and key metadata of one evidence.
 
         `relation` properties are expanded into the three flattened siblings
         (`x`, `x_ref`, `x_showAs` — all typed as `string`) to match how
@@ -216,7 +254,11 @@ class FlexiBeeClient:
         except requests.RequestException as exc:
             raise FlexiBeeClientError(f"Could not fetch properties for evidence '{evidence}': {exc}") from exc
         properties = data.get("properties", {}).get("property", [])
+        if isinstance(properties, dict):
+            properties = [properties]
         types: dict[str, str] = {}
+        id_column: str | None = None
+        key_candidates: list[str] = []
         for prop in properties:
             name = prop.get("propertyName")
             typ = prop.get("type")
@@ -226,7 +268,11 @@ class FlexiBeeClient:
             if typ == "relation":
                 types[f"{name}_ref"] = "string"
                 types[f"{name}_showAs"] = "string"
-        return types
+            if prop.get("inId") == "true" and id_column is None:
+                id_column = name
+            if _looks_like_key_column(name) and typ in _KEY_PROPERTY_TYPES:
+                key_candidates.append(name)
+        return EvidenceSchema(types=types, id_column=id_column, key_candidates=tuple(key_candidates))
 
     def list_evidences(self) -> list[tuple[str, str]]:
         """Return (evidencePath, evidenceName) pairs for the connected company."""

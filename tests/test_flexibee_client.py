@@ -30,24 +30,32 @@ def test_build_evidence_path_with_filter_goes_in_path_not_query():
     assert "?filter=" not in path
 
 
-def test_build_lastupdate_wql_both_bounds():
+def test_build_date_wql_both_bounds():
     c = _client()
-    wql = c.build_lastupdate_wql(
+    wql = c.build_date_wql(
+        "lastUpdate",
         datetime(2026, 5, 1, 0, 0, 0),
         datetime(2026, 5, 27, 23, 59, 59),
     )
     assert wql == ("lastUpdate gt '2026-05-01T00:00:00+00:00' and lastUpdate lt '2026-05-27T23:59:59+00:00'")
 
 
-def test_build_lastupdate_wql_from_only():
+def test_build_date_wql_from_only():
     c = _client()
-    wql = c.build_lastupdate_wql(datetime(2026, 5, 1, 0, 0, 0), None)
+    wql = c.build_date_wql("lastUpdate", datetime(2026, 5, 1, 0, 0, 0), None)
     assert wql == "lastUpdate gt '2026-05-01T00:00:00+00:00'"
 
 
-def test_build_lastupdate_wql_none_returns_none():
+def test_build_date_wql_none_returns_none():
     c = _client()
-    assert c.build_lastupdate_wql(None, None) is None
+    assert c.build_date_wql("lastUpdate", None, None) is None
+
+
+def test_build_date_wql_honours_custom_field():
+    # The window column is configurable (the "Date field" picker), not hardcoded.
+    c = _client()
+    wql = c.build_date_wql("datVyst", datetime(2026, 5, 1, 0, 0, 0), None)
+    assert wql == "datVyst gt '2026-05-01T00:00:00+00:00'"
 
 
 def test_flatten_record_reference_fields():
@@ -151,12 +159,12 @@ def test_iter_records_wraps_timeout():
         raise AssertionError("expected FlexiBeeClientError on timeout")
 
 
-def test_get_evidence_properties_returns_name_to_type_map():
+def test_get_evidence_schema_returns_name_to_type_map():
     c = _client()
     body = {
         "properties": {
             "property": [
-                {"propertyName": "id", "type": "integer"},
+                {"propertyName": "id", "type": "integer", "inId": "true"},
                 {"propertyName": "kod", "type": "string"},
                 {"propertyName": "sumOsv", "type": "numeric"},
                 {"propertyName": "datObj", "type": "date"},
@@ -167,7 +175,7 @@ def test_get_evidence_properties_returns_name_to_type_map():
         }
     }
     c._http.get = mock.Mock(return_value=body)
-    types = c.get_evidence_properties("faktura-vydana")
+    types = c.get_evidence_schema("faktura-vydana").types
     assert types["id"] == "integer"
     assert types["kod"] == "string"
     assert types["sumOsv"] == "numeric"
@@ -177,7 +185,7 @@ def test_get_evidence_properties_returns_name_to_type_map():
     assert types["zamekK"] == "select"
 
 
-def test_get_evidence_properties_expands_relation_siblings():
+def test_get_evidence_schema_expands_relation_siblings():
     c = _client()
     body = {
         "properties": {
@@ -187,18 +195,73 @@ def test_get_evidence_properties_expands_relation_siblings():
         }
     }
     c._http.get = mock.Mock(return_value=body)
-    types = c.get_evidence_properties("faktura-vydana")
+    types = c.get_evidence_schema("faktura-vydana").types
     # The flattener emits `mena`, `mena_ref`, `mena_showAs`; all three must be typed.
     assert types == {"mena": "relation", "mena_ref": "string", "mena_showAs": "string"}
 
 
-def test_get_evidence_properties_wraps_http_error():
+def test_get_evidence_schema_reads_key_from_in_id_flag():
+    c = _client()
+    body = {
+        "properties": {
+            "property": [
+                {"propertyName": "id", "type": "integer", "inId": "true"},
+                {"propertyName": "kod", "type": "string"},
+            ]
+        }
+    }
+    c._http.get = mock.Mock(return_value=body)
+    schema = c.get_evidence_schema("faktura-vydana")
+    assert schema.id_column == "id"
+    assert schema.key_candidates == ("id",)
+
+
+def test_get_evidence_schema_collects_key_candidates_in_declaration_order():
+    # Derived evidences (ucetni-denik) flag no inId; their own key column comes
+    # first, ahead of relational id* columns that are not unique per record.
+    c = _client()
+    body = {
+        "properties": {
+            "property": [
+                {"propertyName": "idUcetniDenik", "type": "integer"},
+                {"propertyName": "doklad", "type": "string"},
+                {"propertyName": "idDokl", "type": "integer"},
+                {"propertyName": "idPolozek", "type": "array"},
+            ]
+        }
+    }
+    c._http.get = mock.Mock(return_value=body)
+    schema = c.get_evidence_schema("ucetni-denik")
+    assert schema.id_column is None
+    assert schema.key_candidates == ("idUcetniDenik", "idDokl")
+    assert schema.columns == ["idUcetniDenik", "doklad", "idDokl", "idPolozek"]
+
+
+def test_get_evidence_schema_ignores_id_prefixed_non_key_columns():
+    # Only `id` or `id<Capital>...` columns are keys. A numeric field that merely
+    # starts with the letters "id" (e.g. `idealniStav`) must NOT become a candidate.
+    c = _client()
+    body = {
+        "properties": {
+            "property": [
+                {"propertyName": "idUcetniDenik", "type": "integer"},
+                {"propertyName": "idealniStav", "type": "numeric"},
+                {"propertyName": "identifikator", "type": "string"},
+            ]
+        }
+    }
+    c._http.get = mock.Mock(return_value=body)
+    schema = c.get_evidence_schema("ucetni-denik")
+    assert schema.key_candidates == ("idUcetniDenik",)
+
+
+def test_get_evidence_schema_wraps_http_error():
     import requests
 
     c = _client()
     c._http.get = mock.Mock(side_effect=requests.HTTPError("500"))
     try:
-        c.get_evidence_properties("faktura-vydana")
+        c.get_evidence_schema("faktura-vydana")
     except FlexiBeeClientError as e:
         assert "faktura-vydana" in str(e)
     else:

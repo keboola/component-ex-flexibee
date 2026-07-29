@@ -28,12 +28,26 @@ def test_build_typed_schema_maps_flexibee_types_to_base_types():
     assert base("zamekK") == "STRING"
 
 
-def test_build_typed_schema_marks_id_primary_key_and_not_nullable():
-    schema = _build_typed_schema(["id", "kod"], {"id": "integer", "kod": "string"})
+def test_build_typed_schema_marks_key_columns_primary_key_and_not_nullable():
+    schema = _build_typed_schema(["id", "kod"], {"id": "integer", "kod": "string"}, ["id"])
     assert schema["id"].primary_key is True
     assert schema["id"].nullable is False
     assert schema["kod"].primary_key is False
     assert schema["kod"].nullable is True
+
+
+def test_build_typed_schema_marks_evidence_specific_key_column():
+    columns = ["idUcetniDenik", "doklad"]
+    types = {"idUcetniDenik": "integer", "doklad": "string"}
+    schema = _build_typed_schema(columns, types, ["idUcetniDenik"])
+    assert schema["idUcetniDenik"].primary_key is True
+    assert schema["idUcetniDenik"].nullable is False
+    assert schema["doklad"].primary_key is False
+
+
+def test_build_typed_schema_without_primary_key_marks_no_column():
+    schema = _build_typed_schema(["ucet", "mena"], {"ucet": "string", "mena": "relation"}, [])
+    assert all(col.primary_key is False for col in schema.values())
 
 
 def test_build_typed_schema_falls_back_to_string_for_missing_or_unknown_types():
