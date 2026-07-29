@@ -37,7 +37,7 @@
       "format": "select",
       "enum": [],
       "options": {
-        "creatable": true,
+        "tags": true,
         "async": {
           "label": "Re-load date fields",
           "action": "getDateFields",

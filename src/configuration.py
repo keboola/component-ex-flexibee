@@ -15,6 +15,14 @@ from pydantic import (
 )
 
 
+class PrimaryKeyMode(StrEnum):
+    """Legacy values accepted from rows saved before the primary-key UI simplification."""
+
+    auto = "auto"
+    custom = "custom"
+    none = "none"
+
+
 class LoadType(StrEnum):
     """How each evidence is written to Keboola Storage.
 
@@ -147,6 +155,9 @@ class Configuration(BaseModel):
     # Non-empty => use these columns verbatim. Creatable UI field: values may be picked
     # from getEvidenceColumns or typed by hand, and arrive as a list or a CSV string.
     primary_key: list[str] = Field(default_factory=list)
+    # Kept out of the UI but accepted from saved rows created before the primary-key
+    # selector was simplified. In particular, `none` must not silently become auto.
+    primary_key_mode: PrimaryKeyMode | None = Field(default=None, exclude=True)
 
     @field_validator("primary_key", mode="before")
     @classmethod

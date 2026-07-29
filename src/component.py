@@ -11,7 +11,7 @@ from keboola.vcr import DefaultSanitizer
 
 from client.flexibee_client import EvidenceSchema, FlexiBeeClient, FlexiBeeClientError
 from client.ssh_tunnel import open_tunnel
-from configuration import Configuration
+from configuration import Configuration, PrimaryKeyMode
 
 # FlexiBee property types offered as the Date Start / Date End window column.
 _DATE_PROPERTY_TYPES = frozenset({"date", "datetime"})
@@ -120,6 +120,9 @@ def _resolve_primary_key(
     Report-style evidences expose no identifier and also end up without a key.
     """
     available = columns or schema.columns
+
+    if cfg.primary_key_mode == PrimaryKeyMode.none:
+        return []
 
     # Explicit, user-selected key (creatable field). Trust the columns but warn
     # loudly if they do not actually identify a record.
@@ -284,13 +287,13 @@ class Component(ComponentBase):
                     seen.add(key)
                     columns.append(key)
 
-        if not records:
+        if not records and incremental:
             # Without records there is no column union, and a header built from the key
             # alone would not match the columns of an already loaded table (output mapping
             # rejects it). Skipping the output leaves the existing table untouched — the
             # expected outcome for an incremental/upsert run that returns nothing new.
             logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
-            if cfg.incremental and date_from:
+            if date_from:
                 logging.warning(
                     "Evidence '%s' matched no records with %s newer than %s. To reload it from scratch — "
                     "for example after deleting the output table — widen or clear Date Start, or run it once "
@@ -300,6 +303,9 @@ class Component(ComponentBase):
                     date_from.isoformat(),
                 )
             return
+
+        if not columns:
+            columns = evidence_schema.columns or ["id"]
 
         primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
         if incremental and not primary_key:

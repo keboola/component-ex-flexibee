@@ -110,6 +110,13 @@ def test_auto_returns_no_primary_key_for_report_evidence():
     assert _resolve_primary_key(cfg, ["ucet", "mena"], _KEYLESS, records) == []
 
 
+def test_deprecated_none_primary_key_mode_preserves_keyless_output():
+    """Saved rows that chose `none` keep their no-key behavior after the UI simplification."""
+    cfg = _cfg("faktura-vydana", primary_key_mode="none")
+    records = [{"id": "1", "kod": "FV1"}]
+    assert _resolve_primary_key(cfg, ["id", "kod"], _STANDARD, records) == []
+
+
 def test_auto_resolves_from_properties_when_no_records_were_returned():
     cfg = _cfg("ucetni-denik")
     assert _resolve_primary_key(cfg, [], _DERIVED, []) == ["idUcetniDenik"]

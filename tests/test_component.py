@@ -74,6 +74,24 @@ def test_run_extraction_no_records_writes_no_table():
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
+def test_run_extraction_full_load_with_no_records_writes_empty_table():
+    """An empty full load replaces the existing table with an empty output."""
+    data_dir = _make_datadir({"load_type": "full_load"})
+    os.environ["KBC_DATADIR"] = data_dir
+
+    try:
+        comp = Component()
+        cfg = Configuration(**dict(_BASE_PARAMS, load_type="full_load"))
+
+        comp._run_extraction(cfg, _StubClient())
+
+        output = Path(data_dir) / "out" / "tables" / "faktura-vydana.csv"
+        assert output.read_text() == "id\n"
+        assert output.with_suffix(".csv.manifest").exists()
+    finally:
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
 def test_run_extraction_empty_incremental_window_logs_reload_hint(caplog):
     """Empty incremental result within a Date Start window → hint how to reload from scratch.
 
