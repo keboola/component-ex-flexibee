@@ -19,7 +19,7 @@ class FlexiBeeClientError(Exception):
 _KEY_PROPERTY_TYPES = frozenset({"integer", "numeric"})
 
 
-def _looks_like_key_column(name: str) -> bool:
+def looks_like_key_column(name: str) -> bool:
     """True for FlexiBee id-style key columns: exactly ``id`` or ``id<Capital>…``.
 
     Matches ``id``, ``idUcetniDenik``, ``idDokl``; rejects incidental names such as
@@ -275,7 +275,7 @@ class FlexiBeeClient:
                 types[f"{name}_showAs"] = "string"
             if prop.get("inId") == "true" and id_column is None:
                 id_column = name
-            if _looks_like_key_column(name) and typ in _KEY_PROPERTY_TYPES:
+            if looks_like_key_column(name) and typ in _KEY_PROPERTY_TYPES:
                 key_candidates.append(name)
         return EvidenceSchema(types=types, id_column=id_column, key_candidates=tuple(key_candidates))
 

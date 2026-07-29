@@ -7,6 +7,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+from keboola.component import UserException
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from client.flexibee_client import EvidenceSchema
@@ -88,6 +91,44 @@ def test_run_extraction_full_load_with_no_records_writes_empty_table():
         output = Path(data_dir) / "out" / "tables" / "faktura-vydana.csv"
         assert output.read_text() == "id\n"
         assert output.with_suffix(".csv.manifest").exists()
+    finally:
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
+class _StubClientNoMetadata:
+    """Client stand-in whose metadata call yields nothing (e.g. a transient tunnel failure)."""
+
+    @staticmethod
+    def build_date_wql(*_):
+        return None
+
+    @staticmethod
+    def get_evidence_schema(_):
+        return EvidenceSchema()
+
+    @staticmethod
+    def iter_records(*_args, **_kwargs):
+        return iter(())
+
+
+def test_run_extraction_full_load_no_records_no_metadata_fails_fast():
+    """Full load with neither metadata nor records → raise instead of shrinking the table.
+
+    A full load overwrites, so writing an `id`-only table when the column set is unknown
+    (the metadata call failed AND the window returned nothing) would replace the existing
+    Storage table with a single column. Fail instead so the transient failure is visible.
+    """
+    data_dir = _make_datadir({"load_type": "full_load"})
+    os.environ["KBC_DATADIR"] = data_dir
+
+    try:
+        comp = Component()
+        cfg = Configuration(**dict(_BASE_PARAMS, load_type="full_load"))
+
+        with pytest.raises(UserException, match="Could not determine any output columns"):
+            comp._run_extraction(cfg, _StubClientNoMetadata())
+
+        assert list((Path(data_dir) / "out" / "tables").iterdir()) == []
     finally:
         shutil.rmtree(data_dir, ignore_errors=True)
 

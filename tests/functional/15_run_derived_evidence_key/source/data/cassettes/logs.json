@@ -1,6 +1,6 @@
 {
   "exit_code": null,
-  "stderr": "Evidence 'ucetni-denik': 2 column(s) returned by the API are not declared in its metadata and were left out of the typed output so the schema stays stable across runs: idDokl_evidencePath, idPolozek_evidencePath\n",
+  "stderr": "Evidence 'ucetni-denik': 2 column(s) not declared in the evidence metadata were left out of the typed output so the schema stays stable across runs: idDokl_evidencePath, idPolozek_evidencePath\n",
   "logs": [
     {
       "level": "INFO",
@@ -11,7 +11,7 @@
     {
       "level": "WARNING",
       "logger": "root",
-      "message": "Evidence 'ucetni-denik': 2 column(s) returned by the API are not declared in its metadata and were left out of the typed output so the schema stays stable across runs: idDokl_evidencePath, idPolozek_evidencePath",
+      "message": "Evidence 'ucetni-denik': 2 column(s) not declared in the evidence metadata were left out of the typed output so the schema stays stable across runs: idDokl_evidencePath, idPolozek_evidencePath",
       "timestamp": "2026-07-27T15:03:33.600Z"
     },
     {

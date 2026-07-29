@@ -13,7 +13,7 @@ from client.flexibee_client import (
     EvidenceSchema,
     FlexiBeeClient,
     FlexiBeeClientError,
-    _looks_like_key_column,
+    looks_like_key_column,
 )
 from client.ssh_tunnel import open_tunnel
 from configuration import Configuration, PrimaryKeyMode
@@ -160,7 +160,7 @@ def _resolve_primary_key(
     # derived evidence's own key (e.g. `idUcetniDenik`) is still found — otherwise a
     # transient metadata failure would silently load the table with no key and let an
     # incremental run append duplicate rows.
-    observed_key_like = [col for col in available if _looks_like_key_column(col)]
+    observed_key_like = [col for col in available if looks_like_key_column(col)]
     candidates: list[str] = []
     for candidate in (schema.id_column, "id", *schema.key_candidates, *observed_key_like):
         if not candidate or candidate not in available or candidate in candidates:
@@ -328,10 +328,10 @@ class Component(ComponentBase):
             logging.warning("Skipping native types for '%s': %s", cfg.evidence, exc)
         property_types = evidence_schema.types
 
-        # Buffer records so we can compute the full column union before writing.
-        # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
-        # so a fixed first-row header would silently drop later fields. Evidence sizes
-        # are modest (thousands of flat rows), so buffering is acceptable for v1.
+        # Buffer records before writing: we need the whole result set both to write every
+        # row and to compute the observed-column union that `_resolve_output_columns` uses
+        # as the fallback header when metadata is unavailable (summary / no-metadata paths).
+        # Evidence sizes are modest (thousands of flat rows), so buffering is acceptable for v1.
         custom_projection = _custom_fields_with_key(cfg, evidence_schema)
         try:
             records = list(
@@ -367,15 +367,29 @@ class Component(ComponentBase):
         # incremental window fails to load into the wider table a full run created.
         columns, dropped_columns = _resolve_output_columns(cfg, evidence_schema, records, custom_projection)
         if dropped_columns:
+            reason = (
+                "returned beyond the requested custom projection"
+                if cfg.detail == "custom"
+                else "not declared in the evidence metadata"
+            )
             logging.warning(
-                "Evidence '%s': %d column(s) returned by the API are not declared in its metadata "
-                "and were left out of the typed output so the schema stays stable across runs: %s",
+                "Evidence '%s': %d column(s) %s were left out of the typed output so the schema "
+                "stays stable across runs: %s",
                 cfg.evidence,
                 len(dropped_columns),
+                reason,
                 ", ".join(sorted(dropped_columns)),
             )
         if not columns:
-            columns = ["id"]
+            # No column information from either the metadata or the fetched records — e.g. a
+            # full load that matched nothing while /properties.json was unavailable. Fail
+            # rather than write an `id`-only table, which on a full load would overwrite and
+            # shrink the existing Storage table to a single column.
+            raise UserException(
+                f"Could not determine any output columns for evidence '{cfg.evidence}': the metadata "
+                f"call returned nothing and the run fetched no records. Retry once the source is reachable, "
+                f"or widen the Date Start / Date End window so at least one record is returned."
+            )
 
         primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
         if incremental and not primary_key:
