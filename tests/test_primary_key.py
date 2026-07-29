@@ -104,6 +104,30 @@ def test_auto_falls_back_to_id_column_when_properties_are_unavailable():
     assert _resolve_primary_key(cfg, ["id", "kod"], EvidenceSchema(), records) == ["id"]
 
 
+def test_auto_recovers_derived_key_from_observed_columns_when_properties_unavailable():
+    # A transient /properties.json failure (the source is reached over an SSH tunnel)
+    # leaves an empty schema. On a DERIVED evidence the key is not `id` — that is a
+    # placeholder — so without a fallback the table would load with no primary key and
+    # an incremental run would append duplicate rows while still exiting 0. The observed-
+    # column fallback must recover the evidence's own id* key from the fetched data.
+    cfg = _cfg("ucetni-denik")
+    records = [
+        {"idUcetniDenik": "2147521808", "doklad": "00000005/16"},
+        {"idUcetniDenik": "2147521809", "doklad": "00000006/16"},
+    ]
+    columns = ["idUcetniDenik", "doklad"]
+    assert _resolve_primary_key(cfg, columns, EvidenceSchema(), records) == ["idUcetniDenik"]
+
+
+def test_auto_fallback_ignores_incidental_id_prefixed_columns():
+    # The observed-column fallback must use the same id-key heuristic as the metadata
+    # path: `idealniStav` merely starts with "id" + a lowercase letter and is not a key,
+    # so it must never be picked up as a primary key.
+    cfg = _cfg("nejaka-evidence")
+    records = [{"idealniStav": "5", "nazev": "x"}, {"idealniStav": "6", "nazev": "y"}]
+    assert _resolve_primary_key(cfg, ["idealniStav", "nazev"], EvidenceSchema(), records) == []
+
+
 def test_auto_returns_no_primary_key_for_report_evidence():
     cfg = _cfg("rozvaha-po-uctech")
     records = [{"ucet": "311", "mena": "code:CZK"}]
@@ -157,9 +181,12 @@ def test_explicit_key_accepts_comma_separated_string():
 # ---------------------------------------------------------------------------
 
 
-def test_custom_fields_gain_the_auto_detected_key_column():
+def test_custom_fields_gain_every_auto_detected_key_candidate():
+    # Auto mode requests ALL declared key candidates (not just the first), so if the
+    # first turns out non-unique and _resolve_primary_key falls through to the next,
+    # that column is present in the projection instead of silently missing.
     cfg = _cfg("ucetni-denik", detail="custom", custom_fields="doklad,datVyst")
-    assert _custom_fields_with_key(cfg, _DERIVED) == "doklad,datVyst,idUcetniDenik"
+    assert _custom_fields_with_key(cfg, _DERIVED) == "doklad,datVyst,idUcetniDenik,idDokl"
 
 
 def test_custom_fields_gain_the_user_selected_key_columns():

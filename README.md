@@ -67,8 +67,17 @@ exists in Storage requires dropping the output table first.
 run for both load types — there is no automatic watermark, so bound an incremental load with a
 relative *Date Start* (e.g. "2 days ago") to pull a rolling window of recent changes.
 
-When a run returns no records (e.g. an incremental run whose window matched nothing new),
-no table is written and the existing table in Storage is left unchanged.
+Because the window is re-evaluated from scratch on every run and no watermark is stored, a
+relative *Date Start* only sees records whose *Date field* falls inside the window at run time.
+Records changed while the configuration is paused, or while the source is unreachable for longer
+than the window, are not re-fetched later and nothing reports the gap. After an outage or a long
+pause, widen *Date Start* for one run — or run an occasional full load — to backfill anything the
+rolling window skipped.
+
+When an **incremental** run returns no records (e.g. its window matched nothing new), no table is
+written and the existing table in Storage is left unchanged. A **full** load that returns no
+records still overwrites its table — emptying it — because a full load always replaces Storage
+with exactly what the source returned.
 
 Development
 -----------

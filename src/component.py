@@ -9,7 +9,12 @@ from keboola.component.dao import BaseType, ColumnDefinition
 from keboola.component.sync_actions import SelectElement, ValidationResult
 from keboola.vcr import DefaultSanitizer
 
-from client.flexibee_client import EvidenceSchema, FlexiBeeClient, FlexiBeeClientError
+from client.flexibee_client import (
+    EvidenceSchema,
+    FlexiBeeClient,
+    FlexiBeeClientError,
+    _looks_like_key_column,
+)
 from client.ssh_tunnel import open_tunnel
 from configuration import Configuration, PrimaryKeyMode
 
@@ -90,11 +95,17 @@ def _custom_fields_with_key(cfg: Configuration, schema: EvidenceSchema) -> str:
     if cfg.primary_key:
         needed = list(cfg.primary_key)
     else:
-        # Auto mode: request the evidence's own key so it survives the custom
-        # projection. `id` on a derived evidence comes back as a placeholder on
-        # every row, so prefer the inId column, else the first id* candidate.
-        auto_key = schema.id_column or next(iter(schema.key_candidates), None)
-        needed = [auto_key] if auto_key else []
+        # Auto mode: request EVERY declared key candidate (inId column + id* keys), so
+        # whichever one _resolve_primary_key settles on survives the custom projection.
+        # Requesting only the first would drop the key entirely when that column turns
+        # out non-unique and the resolver falls through to a candidate that was never
+        # fetched. The bare `id` is left out on purpose — on a derived evidence it comes
+        # back as a `-1` placeholder (never chosen as key, only noise), and on a standard
+        # evidence it is already carried here as `id_column`.
+        needed = []
+        for candidate in (schema.id_column, *schema.key_candidates):
+            if candidate and candidate not in needed:
+                needed.append(candidate)
 
     fields = [part.strip() for part in cfg.custom_fields.split(",") if part.strip()]
     fields.extend(col for col in needed if col not in fields)
@@ -144,8 +155,14 @@ def _resolve_primary_key(
 
     # Auto-detection: collect the eligible id-like candidates in priority order,
     # discarding placeholder columns (a derived evidence's `id` is -1 on every row).
+    # Metadata-declared keys come first; when /properties.json was unavailable or did
+    # not flag the key, fall back to id-like columns observed in the fetched data so a
+    # derived evidence's own key (e.g. `idUcetniDenik`) is still found — otherwise a
+    # transient metadata failure would silently load the table with no key and let an
+    # incremental run append duplicate rows.
+    observed_key_like = [col for col in available if _looks_like_key_column(col)]
     candidates: list[str] = []
-    for candidate in (schema.id_column, "id", *schema.key_candidates):
+    for candidate in (schema.id_column, "id", *schema.key_candidates, *observed_key_like):
         if not candidate or candidate not in available or candidate in candidates:
             continue
         if records and _is_placeholder_column(candidate, records):
