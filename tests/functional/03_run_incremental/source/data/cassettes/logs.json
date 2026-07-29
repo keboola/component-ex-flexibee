@@ -1,11 +1,17 @@
 {
   "exit_code": null,
-  "stderr": "",
+  "stderr": "Evidence 'faktura-vydana': 5 column(s) returned by the API are not declared in its metadata and were left out of the typed output so the schema stays stable across runs: banSpojDod_if-not-found, rada_if-not-found, typDoklBan, typDoklBan_ref, typDoklBan_showAs\n",
   "logs": [
     {
       "level": "INFO",
       "logger": "root",
       "message": "Extracting evidence 'faktura-vydana' (load_type=incremental_load)",
+      "timestamp": "2026-07-28T16:50:38.000Z"
+    },
+    {
+      "level": "WARNING",
+      "logger": "root",
+      "message": "Evidence 'faktura-vydana': 5 column(s) returned by the API are not declared in its metadata and were left out of the typed output so the schema stays stable across runs: banSpojDod_if-not-found, rada_if-not-found, typDoklBan, typDoklBan_ref, typDoklBan_showAs",
       "timestamp": "2026-07-28T16:50:38.000Z"
     },
     {

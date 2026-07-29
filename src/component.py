@@ -198,6 +198,55 @@ def _resolve_primary_key(
     return []
 
 
+def _observed_columns(records: list[dict]) -> list[str]:
+    """Union of column names across records, in first-seen order."""
+    columns: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        for key in record:
+            if key not in seen:
+                seen.add(key)
+                columns.append(key)
+    return columns
+
+
+def _resolve_output_columns(
+    cfg: Configuration,
+    schema: EvidenceSchema,
+    records: list[dict],
+    custom_projection: str,
+) -> tuple[list[str], list[str]]:
+    """Return ``(header, dropped)`` — the output columns and any columns left out to keep it stable.
+
+    The header must be identical across runs for a given ``(evidence, detail)`` so an
+    incremental (upsert) load never mismatches the columns of a table an earlier — often
+    wider — run created. FlexiBee omits null fields per record, including the
+    ``_ref``/``_showAs`` siblings of empty relations, so a header built from the fetched
+    records alone shrinks with the result set: a narrow Date window returns fewer records,
+    exposes fewer optional fields, and then fails to load into the table a full run built.
+
+    - ``full`` detail with metadata: anchor to the evidence schema (``/properties.json``),
+      the stable full column set. Fields a record omits are written empty; columns the API
+      returns but does not declare in its metadata are dropped (returned as ``dropped`` so
+      the caller can warn) rather than allowed to destabilise the header.
+    - ``custom`` detail: anchor to the requested projection — already a fixed field list.
+    - ``summary`` detail, or when metadata is unavailable: fall back to the observed column
+      union. Best available, but it can still drift between runs.
+    """
+    observed = _observed_columns(records)
+
+    if cfg.detail == "custom":
+        requested = [col.strip() for col in custom_projection.split(",") if col.strip()]
+        header = requested or observed
+        return header, [col for col in observed if col not in header]
+
+    if cfg.detail == "full" and schema.columns:
+        header = list(schema.columns)
+        return header, [col for col in observed if col not in header]
+
+    return observed, []
+
+
 # Picked up automatically by the datadirtest VCR recorder. Strips the HTTP Basic
 # Authorization header (only content-type/length/accept are kept) and redacts
 # password fields so no credentials are written to committed cassettes.
@@ -283,32 +332,24 @@ class Component(ComponentBase):
         # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
         # so a fixed first-row header would silently drop later fields. Evidence sizes
         # are modest (thousands of flat rows), so buffering is acceptable for v1.
+        custom_projection = _custom_fields_with_key(cfg, evidence_schema)
         try:
             records = list(
                 client.iter_records(
                     cfg.evidence,
                     wql=wql,
                     detail=cfg.detail,
-                    custom_fields=_custom_fields_with_key(cfg, evidence_schema),
+                    custom_fields=custom_projection,
                     limit=cfg.limit,
                 )
             )
         except FlexiBeeClientError as exc:
             raise UserException(str(exc))
 
-        columns: list[str] = []
-        seen: set[str] = set()
-        for record in records:
-            for key in record:
-                if key not in seen:
-                    seen.add(key)
-                    columns.append(key)
-
         if not records and incremental:
-            # Without records there is no column union, and a header built from the key
-            # alone would not match the columns of an already loaded table (output mapping
-            # rejects it). Skipping the output leaves the existing table untouched — the
-            # expected outcome for an incremental/upsert run that returns nothing new.
+            # An incremental (upsert) run that matched nothing new: leave the existing
+            # table untouched rather than writing an empty one. A full load falls through
+            # so it still overwrites (empties) its table with the run's actual result.
             logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
             if date_from:
                 logging.warning(
@@ -321,8 +362,20 @@ class Component(ComponentBase):
                 )
             return
 
+        # Anchor the output columns to the evidence metadata (not the fetched record
+        # sample) so the schema stays identical across runs — otherwise a narrow
+        # incremental window fails to load into the wider table a full run created.
+        columns, dropped_columns = _resolve_output_columns(cfg, evidence_schema, records, custom_projection)
+        if dropped_columns:
+            logging.warning(
+                "Evidence '%s': %d column(s) returned by the API are not declared in its metadata "
+                "and were left out of the typed output so the schema stays stable across runs: %s",
+                cfg.evidence,
+                len(dropped_columns),
+                ", ".join(sorted(dropped_columns)),
+            )
         if not columns:
-            columns = evidence_schema.columns or ["id"]
+            columns = ["id"]
 
         primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
         if incremental and not primary_key:

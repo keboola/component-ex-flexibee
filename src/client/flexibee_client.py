@@ -268,6 +268,11 @@ class FlexiBeeClient:
             if typ == "relation":
                 types[f"{name}_ref"] = "string"
                 types[f"{name}_showAs"] = "string"
+            elif typ == "select":
+                # Enum/select fields also emit a human-readable `@showAs` sibling in
+                # record output; declare it so it stays in the (stable) output schema
+                # instead of being dropped as an undeclared column.
+                types[f"{name}_showAs"] = "string"
             if prop.get("inId") == "true" and id_column is None:
                 id_column = name
             if _looks_like_key_column(name) and typ in _KEY_PROPERTY_TYPES:
