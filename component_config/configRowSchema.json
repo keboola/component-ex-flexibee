@@ -33,7 +33,7 @@
     "date_field": {
       "type": "string",
       "title": "Date field",
-      "description": "Which date/datetime column the Date Start / Date End range filters on.",
+      "description": "Column the Date Start / Date End range filters on.",
       "format": "select",
       "enum": [],
       "options": {
@@ -51,22 +51,29 @@
     "date_from": {
       "type": "string",
       "title": "Date Start",
-      "description": "Lower bound of the Date field range, applied on every run. For an incremental (upsert) load, set a relative bound like '2 days ago' to pull a rolling window of recent changes. Relative ('5 days ago') or absolute ('2026-01-01'). Empty = from the beginning.",
+      "description": "Lower bound of the date-field range.",
+      "options": {
+        "tooltip": "Applied on every run. For an incremental (upsert) load, set a **relative** bound like `2 days ago` to pull a rolling window of recent changes. Accepts relative (`5 days ago`) or absolute (`2026-01-01`) values. Empty = from the beginning."
+      },
       "propertyOrder": 4
     },
     "date_to": {
       "type": "string",
       "title": "Date End",
-      "description": "Upper bound of the Date field range, applied on every run. Empty = now.",
+      "description": "Upper bound of the date-field range.",
+      "options": {
+        "tooltip": "Applied on every run. Accepts relative (`5 days ago`) or absolute (`2026-01-01`) values. Empty = up to now."
+      },
       "propertyOrder": 5
     },
     "detail": {
       "type": "string",
       "title": "Detail level",
-      "description": "How many fields each record includes. **Full** returns the complete record (all fields). **Summary** returns only the core identifying fields (e.g. id, code, name) — smaller and faster. **Custom** returns only the fields you list below.",
+      "description": "How many fields each record includes.",
       "enum": ["full", "summary", "custom"],
       "options": {
-        "enum_titles": ["Full", "Summary", "Custom"]
+        "enum_titles": ["Full", "Summary", "Custom"],
+        "tooltip": "**Full** — the complete record (all fields). **Summary** — only the core identifying fields (e.g. id, code, name); smaller and faster. **Custom** — only the fields you list below."
       },
       "default": "full",
       "propertyOrder": 6
