@@ -79,6 +79,17 @@ written and the existing table in Storage is left unchanged. A **full** load tha
 records still overwrites its table — emptying it — because a full load always replaces Storage
 with exactly what the source returned.
 
+**Stable output columns.** FlexiBee omits null fields per record, so a header built from the
+fetched records alone shrinks with the result set — a narrow Date window then fails to load into
+the wider table a full run created. The output header is therefore anchored to a
+window-independent source: *Full* detail uses the evidence metadata (`/properties.json`); *Custom*
+detail uses the field list you provide; *Summary* detail has no metadata, so it is anchored to one
+extra unfiltered probe request per run. Columns the source returns but the anchor does not declare
+are dropped and logged. If none of these anchors is available on an **incremental** load (metadata
+unreachable, or the summary probe failed), the run fails with a clear error rather than writing a
+table that Storage would reject — retry once the source is reachable, or run the row once as a full
+load to rebuild the table. *Custom* detail with an empty field list is rejected at run start.
+
 Development
 -----------
 
