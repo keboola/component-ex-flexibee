@@ -67,8 +67,28 @@ exists in Storage requires dropping the output table first.
 run for both load types — there is no automatic watermark, so bound an incremental load with a
 relative *Date Start* (e.g. "2 days ago") to pull a rolling window of recent changes.
 
-When a run returns no records (e.g. an incremental run whose window matched nothing new),
-no table is written and the existing table in Storage is left unchanged.
+Because the window is re-evaluated from scratch on every run and no watermark is stored, a
+relative *Date Start* only sees records whose *Date field* falls inside the window at run time.
+Records changed while the configuration is paused, or while the source is unreachable for longer
+than the window, are not re-fetched later and nothing reports the gap. After an outage or a long
+pause, widen *Date Start* for one run — or run an occasional full load — to backfill anything the
+rolling window skipped.
+
+When an **incremental** run returns no records (e.g. its window matched nothing new), no table is
+written and the existing table in Storage is left unchanged. A **full** load that returns no
+records still overwrites its table — emptying it — because a full load always replaces Storage
+with exactly what the source returned.
+
+**Stable output columns.** FlexiBee omits null fields per record, so a header built from the
+fetched records alone shrinks with the result set — a narrow Date window then fails to load into
+the wider table a full run created. The output header is therefore anchored to a
+window-independent source: *Full* detail uses the evidence metadata (`/properties.json`); *Custom*
+detail uses the field list you provide; *Summary* detail has no metadata, so it is anchored to one
+extra unfiltered probe request per run. Columns the source returns but the anchor does not declare
+are dropped and logged. If none of these anchors is available on an **incremental** load (metadata
+unreachable, or the summary probe failed), the run fails with a clear error rather than writing a
+table that Storage would reject — retry once the source is reachable, or run the row once as a full
+load to rebuild the table. *Custom* detail with an empty field list is rejected at run start.
 
 Development
 -----------

@@ -1,11 +1,17 @@
 {
   "exit_code": null,
-  "stderr": "",
+  "stderr": "Evidence 'ucetni-denik': 2 column(s) not declared in the evidence metadata were left out of the typed output so the schema stays stable across runs: idDokl_evidencePath, idPolozek_evidencePath\n",
   "logs": [
     {
       "level": "INFO",
       "logger": "root",
       "message": "Extracting evidence 'ucetni-denik' (load_type=incremental_load)",
+      "timestamp": "2026-07-28T16:52:41.000Z"
+    },
+    {
+      "level": "WARNING",
+      "logger": "root",
+      "message": "Evidence 'ucetni-denik': 2 column(s) not declared in the evidence metadata were left out of the typed output so the schema stays stable across runs: idDokl_evidencePath, idPolozek_evidencePath",
       "timestamp": "2026-07-28T16:52:41.000Z"
     },
     {

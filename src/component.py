@@ -1,6 +1,7 @@
 """ABRA Flexi (FlexiBee) extractor component."""
 
 import csv
+import itertools
 import logging
 
 from keboola.component import ComponentBase, UserException
@@ -9,7 +10,12 @@ from keboola.component.dao import BaseType, ColumnDefinition
 from keboola.component.sync_actions import SelectElement, ValidationResult
 from keboola.vcr import DefaultSanitizer
 
-from client.flexibee_client import EvidenceSchema, FlexiBeeClient, FlexiBeeClientError
+from client.flexibee_client import (
+    EvidenceSchema,
+    FlexiBeeClient,
+    FlexiBeeClientError,
+    looks_like_key_column,
+)
 from client.ssh_tunnel import open_tunnel
 from configuration import Configuration, PrimaryKeyMode
 
@@ -90,11 +96,17 @@ def _custom_fields_with_key(cfg: Configuration, schema: EvidenceSchema) -> str:
     if cfg.primary_key:
         needed = list(cfg.primary_key)
     else:
-        # Auto mode: request the evidence's own key so it survives the custom
-        # projection. `id` on a derived evidence comes back as a placeholder on
-        # every row, so prefer the inId column, else the first id* candidate.
-        auto_key = schema.id_column or next(iter(schema.key_candidates), None)
-        needed = [auto_key] if auto_key else []
+        # Auto mode: request EVERY declared key candidate (inId column + id* keys), so
+        # whichever one _resolve_primary_key settles on survives the custom projection.
+        # Requesting only the first would drop the key entirely when that column turns
+        # out non-unique and the resolver falls through to a candidate that was never
+        # fetched. The bare `id` is left out on purpose — on a derived evidence it comes
+        # back as a `-1` placeholder (never chosen as key, only noise), and on a standard
+        # evidence it is already carried here as `id_column`.
+        needed = []
+        for candidate in (schema.id_column, *schema.key_candidates):
+            if candidate and candidate not in needed:
+                needed.append(candidate)
 
     fields = [part.strip() for part in cfg.custom_fields.split(",") if part.strip()]
     fields.extend(col for col in needed if col not in fields)
@@ -144,8 +156,14 @@ def _resolve_primary_key(
 
     # Auto-detection: collect the eligible id-like candidates in priority order,
     # discarding placeholder columns (a derived evidence's `id` is -1 on every row).
+    # Metadata-declared keys come first; when /properties.json was unavailable or did
+    # not flag the key, fall back to id-like columns observed in the fetched data so a
+    # derived evidence's own key (e.g. `idUcetniDenik`) is still found — otherwise a
+    # transient metadata failure would silently load the table with no key and let an
+    # incremental run append duplicate rows.
+    observed_key_like = [col for col in available if looks_like_key_column(col)]
     candidates: list[str] = []
-    for candidate in (schema.id_column, "id", *schema.key_candidates):
+    for candidate in (schema.id_column, "id", *schema.key_candidates, *observed_key_like):
         if not candidate or candidate not in available or candidate in candidates:
             continue
         if records and _is_placeholder_column(candidate, records):
@@ -179,6 +197,113 @@ def _resolve_primary_key(
         cfg.evidence,
     )
     return []
+
+
+def _observed_columns(records: list[dict]) -> list[str]:
+    """Union of column names across records, in first-seen order."""
+    columns: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        for key in record:
+            if key not in seen:
+                seen.add(key)
+                columns.append(key)
+    return columns
+
+
+def _summary_anchor_columns(
+    cfg: Configuration,
+    client: FlexiBeeClient,
+    wql: str | None,
+    records: list[dict],
+) -> list[str] | None:
+    """Return a run-independent column set for ``summary`` detail, or ``None`` if none.
+
+    ``summary`` is a FlexiBee-defined projection that is *not* described by
+    ``/properties.json``, so it has no metadata anchor. Like ``full`` detail it omits
+    null fields per record, so a Date-filtered window can expose fewer columns than a
+    wide run and then fail to load into the table that wide run built.
+
+    The stable anchor is the column set of the evidence *unfiltered*:
+    - When this run itself is unfiltered (``wql is None``) the fetched ``records`` already
+      cover every record, so their union is the complete set — no extra call is made.
+    - When the run is filtered, probe the unfiltered head (one page, bounded by
+      ``limit``) and take its column union. Deterministic across runs (same query, same
+      first page), so the header stays put even as the filtered window narrows.
+
+    Returns ``None`` for non-``summary`` detail, when the probe yields nothing, or when
+    the probe call fails — the caller then treats the header as un-anchored.
+    """
+    if cfg.detail != "summary":
+        return None
+    if wql is None:
+        return _observed_columns(records) or None
+    try:
+        probe = list(
+            itertools.islice(
+                client.iter_records(cfg.evidence, wql=None, detail=cfg.detail, limit=cfg.limit),
+                cfg.limit,
+            )
+        )
+    except FlexiBeeClientError as exc:
+        logging.warning(
+            "Could not probe the unfiltered column set of '%s' to stabilise the summary header: %s",
+            cfg.evidence,
+            exc,
+        )
+        return None
+    return _observed_columns(probe) or None
+
+
+def _resolve_output_columns(
+    cfg: Configuration,
+    schema: EvidenceSchema,
+    records: list[dict],
+    custom_projection: str,
+    summary_anchor: list[str] | None = None,
+) -> tuple[list[str], list[str], bool]:
+    """Return ``(header, dropped, anchored)`` for the output table.
+
+    ``header`` is the output columns, ``dropped`` the columns left out to keep it stable,
+    and ``anchored`` is ``True`` only when ``header`` came from a run-independent source.
+
+    The header must be identical across runs for a given ``(evidence, detail)`` so an
+    incremental (upsert) load never mismatches the columns of a table an earlier — often
+    wider — run created. FlexiBee omits null fields per record, including the
+    ``_ref``/``_showAs`` siblings of empty relations, so a header built from the fetched
+    records alone shrinks with the result set: a narrow Date window returns fewer records,
+    exposes fewer optional fields, and then fails to load into the table a full run built.
+
+    Anchored sources (``anchored=True``):
+    - ``full`` detail with metadata: the evidence schema (``/properties.json``).
+    - ``custom`` detail with a projection: the requested field list — already fixed.
+    - ``summary`` detail with a probe: the unfiltered column set (see
+      :func:`_summary_anchor_columns`).
+    Columns the run observes but the anchor does not declare are returned in ``dropped``
+    (so the caller can warn) rather than allowed to destabilise the header.
+
+    Un-anchored fallback (``anchored=False``): the observed column union of *this run's*
+    records — used when metadata/projection/probe are all unavailable. It can drift
+    between runs, so the caller must refuse to write it under an incremental load.
+    """
+    observed = _observed_columns(records)
+
+    if cfg.detail == "custom":
+        requested = [col.strip() for col in custom_projection.split(",") if col.strip()]
+        if requested:
+            return requested, [col for col in observed if col not in requested], True
+        return observed, [], False
+
+    if cfg.detail == "full":
+        if schema.columns:
+            header = list(schema.columns)
+            return header, [col for col in observed if col not in header], True
+        return observed, [], False
+
+    if cfg.detail == "summary" and summary_anchor is not None:
+        return summary_anchor, [col for col in observed if col not in summary_anchor], True
+
+    return observed, [], False
 
 
 # Picked up automatically by the datadirtest VCR recorder. Strips the HTTP Basic
@@ -221,6 +346,16 @@ class Component(ComponentBase):
         cfg = Configuration(**self.configuration.parameters)
         if not cfg.evidence:
             raise UserException("No evidence type selected. Choose an evidence type for this row.")
+        if cfg.detail == "custom" and not cfg.custom_fields.strip():
+            # `detail=custom` with no projection sends a bare `custom:` to the API and the
+            # header can only come from the fetched window, which drifts between runs and
+            # breaks the incremental load. Reject it here rather than at parse time so the
+            # sync actions (test connection, list columns) still work on a half-filled row.
+            raise UserException(
+                "Detail is set to 'custom' but no custom fields were provided. List the columns to "
+                "extract in 'Custom fields', or switch Detail to 'full' or 'summary'. A custom "
+                "projection with no fields produces an unstable column set that fails the incremental load."
+            )
         # Open the SSH tunnel when configured and enabled; it is a no-op
         # context manager otherwise so the direct-connection path is unchanged.
         with open_tunnel(cfg.ssh_tunnel, cfg.base_url) as (tunnel_base_url, tunnel_original_host):
@@ -262,36 +397,28 @@ class Component(ComponentBase):
             logging.warning("Skipping native types for '%s': %s", cfg.evidence, exc)
         property_types = evidence_schema.types
 
-        # Buffer records so we can compute the full column union before writing.
-        # FlexiBee records have varying keys (e.g. `external-ids` appears only on some),
-        # so a fixed first-row header would silently drop later fields. Evidence sizes
-        # are modest (thousands of flat rows), so buffering is acceptable for v1.
+        # Buffer records before writing: we need the whole result set both to write every
+        # row and to compute the observed-column union that `_resolve_output_columns` uses
+        # as the fallback header when metadata is unavailable (summary / no-metadata paths).
+        # Evidence sizes are modest (thousands of flat rows), so buffering is acceptable for v1.
+        custom_projection = _custom_fields_with_key(cfg, evidence_schema)
         try:
             records = list(
                 client.iter_records(
                     cfg.evidence,
                     wql=wql,
                     detail=cfg.detail,
-                    custom_fields=_custom_fields_with_key(cfg, evidence_schema),
+                    custom_fields=custom_projection,
                     limit=cfg.limit,
                 )
             )
         except FlexiBeeClientError as exc:
             raise UserException(str(exc))
 
-        columns: list[str] = []
-        seen: set[str] = set()
-        for record in records:
-            for key in record:
-                if key not in seen:
-                    seen.add(key)
-                    columns.append(key)
-
         if not records and incremental:
-            # Without records there is no column union, and a header built from the key
-            # alone would not match the columns of an already loaded table (output mapping
-            # rejects it). Skipping the output leaves the existing table untouched — the
-            # expected outcome for an incremental/upsert run that returns nothing new.
+            # An incremental (upsert) run that matched nothing new: leave the existing
+            # table untouched rather than writing an empty one. A full load falls through
+            # so it still overwrites (empties) its table with the run's actual result.
             logging.warning("No records returned for evidence '%s'; the output table is left unchanged.", cfg.evidence)
             if date_from:
                 logging.warning(
@@ -304,8 +431,58 @@ class Component(ComponentBase):
                 )
             return
 
+        # Anchor the output columns to a run-independent source (metadata for full,
+        # the requested projection for custom, the unfiltered column set for summary)
+        # so the schema stays identical across runs — otherwise a narrow incremental
+        # window fails to load into the wider table a full run created. `summary` has no
+        # metadata to anchor to, so its stable column set comes from an unfiltered probe.
+        summary_anchor = _summary_anchor_columns(cfg, client, wql, records)
+        columns, dropped_columns, anchored = _resolve_output_columns(
+            cfg, evidence_schema, records, custom_projection, summary_anchor
+        )
+        if dropped_columns:
+            reason = (
+                "returned beyond the requested custom projection"
+                if cfg.detail == "custom"
+                else "not declared in the evidence metadata"
+            )
+            logging.warning(
+                "Evidence '%s': %d column(s) %s were left out of the typed output so the schema "
+                "stays stable across runs: %s",
+                cfg.evidence,
+                len(dropped_columns),
+                reason,
+                ", ".join(sorted(dropped_columns)),
+            )
         if not columns:
-            columns = evidence_schema.columns or ["id"]
+            # No column information from either the metadata/probe or the fetched records —
+            # e.g. a full load that matched nothing while /properties.json was unavailable.
+            # Fail rather than write an `id`-only table, which on a full load would overwrite
+            # and shrink the existing Storage table to a single column.
+            raise UserException(
+                f"Could not determine any output columns for evidence '{cfg.evidence}': the metadata "
+                f"call returned nothing and the run fetched no records. Retry once the source is reachable, "
+                f"or widen the Date Start / Date End window so at least one record is returned."
+            )
+        if incremental and not anchored:
+            # The header could only be taken from THIS run's filtered records — a narrower
+            # window would then be missing columns the existing table already has, which
+            # Storage rejects on an upsert. Fail loudly with the cause instead of writing a
+            # table that mismatches. A full load is exempt: it overwrites the whole table,
+            # so a reshaped column set is fine there.
+            if cfg.detail == "full":
+                cause = "the evidence metadata (/properties.json) was unavailable"
+            elif cfg.detail == "summary":
+                cause = "the unfiltered column probe was unavailable"
+            else:
+                cause = "no stable column source was available"
+            raise UserException(
+                f"Could not build a stable set of output columns for evidence '{cfg.evidence}' on an "
+                f"incremental load: {cause}, so the columns could only be taken from this run's filtered "
+                f"result. A narrower window would then be missing columns the existing table already has "
+                f"and Storage would reject the load. Retry once the source is reachable, or run the row "
+                f"once as full load to rebuild the table from the current column set."
+            )
 
         primary_key = _resolve_primary_key(cfg, columns, evidence_schema, records)
         if incremental and not primary_key:

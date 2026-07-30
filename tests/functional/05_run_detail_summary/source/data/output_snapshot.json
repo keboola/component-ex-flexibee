@@ -20,17 +20,20 @@
         "mena_ref",
         "mena_showAs",
         "firma",
-        "popis"
+        "firma_ref",
+        "firma_showAs",
+        "popis",
+        "stavUhrK_showAs"
       ],
-      "hash": "sha256:4814a5383477a824a27e0a45c4a7af06c383fb6c3ad8d46f7dc7503d4f90853d",
-      "row_count": 7,
-      "size_bytes": 1274
+      "hash": "sha256:3b00b77ab6dbb26c468167678f39bda6b9535cb934afc217541fe5fe9777904a",
+      "row_count": 9,
+      "size_bytes": 1772
     },
     "faktura-vydana.csv.manifest": {
       "columns": null,
-      "hash": "sha256:f8d98e31702c271523bfb076e1e261d1e5875f6f4c0e8a92fd96cb6346883be1",
+      "hash": "sha256:9f50e431410c27044d920740cdf0bb81f3127259af9e9bb70e0629998c8904f3",
       "row_count": null,
-      "size_bytes": 2688
+      "size_bytes": 3124
     }
   },
   "version": "1.0"
