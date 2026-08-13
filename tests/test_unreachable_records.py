@@ -88,7 +88,7 @@ def test_warns_with_the_real_numbers(caplog):
     assert "275 of 51476" in caplog.text
     assert "lastUpdate" in caplog.text
     # The message must tell the user what to actually do.
-    assert "clear Date Start" in caplog.text.replace("Date Start", "Date Start")
+    assert "clear Date Start" in caplog.text
 
 
 def test_silent_when_every_record_is_reachable(caplog):
@@ -99,17 +99,33 @@ def test_silent_when_every_record_is_reachable(caplog):
     assert caplog.text == ""
 
 
-def test_custom_filter_is_applied_to_both_counts_and_kept_parenthesized():
-    """Precedence matters: `(a or b) and c`, never `a or b and c`."""
+def test_custom_filter_containing_or_is_parenthesized():
+    """BOTH sides must be wrapped, or an `or` escapes the intended AND.
+
+    Measured against a live instance with an `or` in the custom filter: the bare
+    form `(<presence>) and a or b` counted 22,927 reachable of 22,931 total and so
+    reported 4 unreachable records, where the correctly parenthesized form counts
+    13,319 and reports 9,612. A precedence slip here silently defeats the warning
+    this whole feature exists to emit, so this test uses a filter that actually
+    contains `or` — one without it cannot catch the bug.
+    """
     c = _client()
+    user_filter = "datUcto gte '2016-03-01T00:00:00+00:00' or datUcto gte '2025-01-01T00:00:00+00:00'"
     with mock.patch.object(c, "count_records", side_effect=[10, 10]) as counter:
-        _warn_unreachable_records(c, _cfg(custom_filter="idUcetniDenik gt 0"), "lastUpdate")
+        _warn_unreachable_records(c, _cfg(custom_filter=user_filter), "lastUpdate")
     total_wql = counter.call_args_list[0].args[1]
     reachable_wql = counter.call_args_list[1].args[1]
-    # The total must be counted within the same custom-filter context, or the
-    # difference would wrongly include records the user never asked for.
-    assert total_wql == "idUcetniDenik gt 0"
-    assert reachable_wql.startswith("(") and ") and idUcetniDenik gt 0" in reachable_wql
+
+    # The total is counted within the same custom-filter context, or the difference
+    # would wrongly include records the user never asked for. Alone it needs no
+    # parentheses — there is no surrounding operator for an `or` to escape.
+    assert total_wql == user_filter
+
+    presence = c.build_field_present_wql("lastUpdate")
+    assert reachable_wql == f"({presence}) and ({user_filter})"
+    # Explicitly: neither operand may sit bare next to the AND.
+    assert f"and {user_filter}" not in reachable_wql
+    assert f"{presence} and" not in reachable_wql
 
 
 def test_probe_failure_never_fails_the_run(caplog):

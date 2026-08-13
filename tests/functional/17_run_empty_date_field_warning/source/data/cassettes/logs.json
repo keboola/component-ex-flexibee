@@ -6,19 +6,19 @@
       "level": "INFO",
       "logger": "root",
       "message": "Extracting evidence 'ucetni-denik' (load_type=full_load)",
-      "timestamp": "2026-08-13T09:27:19.511Z"
+      "timestamp": "2026-08-13T09:34:38.073Z"
     },
     {
       "level": "WARNING",
       "logger": "root",
       "message": "4 of 4 records in evidence 'ucetni-denik' have an empty 'datUhr' and therefore CANNOT be returned by any date window on that column \u2014 they are missing from this run's output. This is an ABRA Flexi data quirk (the column is sometimes left unset) and the API offers no way to filter for empty values. To extract them, clear Date Start to run without a window, or pick a Date field that is always populated on this evidence.",
-      "timestamp": "2026-08-13T09:27:19.740Z"
+      "timestamp": "2026-08-13T09:34:38.315Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 0 rows for evidence 'ucetni-denik'",
-      "timestamp": "2026-08-13T09:27:19.922Z"
+      "timestamp": "2026-08-13T09:34:38.511Z"
     }
   ]
 }

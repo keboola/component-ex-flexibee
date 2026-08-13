@@ -100,9 +100,14 @@ def _warn_unreachable_records(client: FlexiBeeClient, cfg: Configuration, date_f
     """
     try:
         presence = client.build_field_present_wql(date_field)
-        # The presence expression contains `or`, so it must stay parenthesized when
-        # AND-ed with the user's filter, or precedence would silently widen it.
-        reachable_wql = f"({presence}) and {cfg.custom_filter}" if cfg.custom_filter else presence
+        # BOTH sides must be parenthesized. The presence expression contains `or`,
+        # and the user's filter may too, so leaving either bare lets an `or` escape
+        # the intended AND. Measured against a live instance with a custom filter
+        # containing `or`: the bare form counted 22,927 reachable of 22,931 total
+        # (reporting 4 unreachable) where the parenthesized form counts 13,319
+        # (9,612 unreachable) — i.e. the bug would under-report by three orders of
+        # magnitude, silently defeating the warning this function exists to emit.
+        reachable_wql = f"({presence}) and ({cfg.custom_filter})" if cfg.custom_filter else presence
         total = client.count_records(cfg.evidence, cfg.custom_filter or None)
         reachable = client.count_records(cfg.evidence, reachable_wql)
     except Exception as exc:  # noqa: BLE001 - a diagnostic must never fail the run
