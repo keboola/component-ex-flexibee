@@ -1,0 +1,73 @@
+name: AI Code Review
+
+# Triggers:
+#   - Auto: every non-draft PR (mode configurable via repo variables, see below)
+#   - On-demand: apply the "ai-review" label to any PR to (re-)review it
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+
+permissions:
+  contents: read # checkout
+  pull-requests: write # post review comments + approval
+  issues: write # remove the ai-review label
+
+concurrency:
+  group: code-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # Run when:
+    #   - the "ai-review" label was just applied (manual re-trigger), OR
+    #   - mode is "auto" (default) and the PR is not a draft (unless drafts allowed).
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'ai-review')
+      || (
+        github.event.action != 'labeled'
+        && (vars.AI_REVIEW_MODE == 'auto' || vars.AI_REVIEW_MODE == '')
+        && (
+          github.event.pull_request.draft == false
+          || vars.AI_REVIEW_INCLUDE_DRAFTS == 'true'
+        )
+      )
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI Code Review
+        uses: keboola/ai-codereviewer@main
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Keboola default: Google Gemini via the org-level secret.
+          AI_PROVIDER: "google"
+          AI_API_KEY: ${{ secrets.AI_CR_GOOGLE_API_KEY }}
+          AI_MODEL: "gemini-3.1-pro-preview"
+          AI_TEMPERATURE: 0.3
+
+          # Aggressive auto-approve: approve unless a real blocker is found.
+          # A surviving blocker-severity comment still forces request_changes,
+          # regardless of the threshold — that's the intended safety floor.
+          APPROVE_REVIEWS: true
+          APPROVE_CONFIDENCE_THRESHOLD: 50
+          MAX_COMMENTS: 10
+          MIN_COMMENT_SEVERITY: minor
+
+          EXCLUDE_PATTERNS: "**/*.lock"
+
+      - name: Remove ai-review label after re-trigger
+        if: always() && github.event.action == 'labeled' && github.event.label.name == 'ai-review'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'ai-review',
+              });
+            } catch (e) {
+              core.warning(`Could not remove label: ${e.message}`);
+            }
