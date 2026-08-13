@@ -3,6 +3,7 @@
 import csv
 import itertools
 import logging
+import re
 
 from keboola.component import ComponentBase, UserException
 from keboola.component.base import sync_action
@@ -45,6 +46,59 @@ _FLEXIBEE_TO_BASE_TYPE: dict[str, BaseType] = {
 # column is emitted when explicitly requested but carries no record identity, so
 # it must never become a primary key (every row would collapse into one).
 _PLACEHOLDER_ID_VALUES = frozenset({"", "-1", "0"})
+
+
+# FlexiBee returns whole-day `date` values with a UTC offset appended and no time
+# part — `2025-01-01+01:00` (`+02:00` under DST). A column declared DATE cannot
+# load that; Storage rejects the whole file with
+# `Date '2025-01-01+01:00' is not recognized`. The offset carries no information
+# for a whole-day value, so it is dropped and the plain calendar date is written.
+# `datetime` values are left alone: they are full ISO-8601 timestamps
+# (`2025-01-15T21:52:24.742+01:00`) that Storage accepts as-is.
+_DATE_WITH_OFFSET = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:[+-]\d{2}:?\d{2}|Z)$")
+
+
+def _normalize_date_value(value):
+    """Strip the trailing UTC offset from a whole-day FlexiBee `date` value.
+
+    Anything that is not a bare `YYYY-MM-DD` plus offset — an empty string, a
+    full timestamp, a non-string — is returned untouched.
+    """
+    if not isinstance(value, str):
+        return value
+    match = _DATE_WITH_OFFSET.match(value.strip())
+    return match.group(1) if match else value
+
+
+def _normalize_date_columns(records: list[dict], property_types: dict[str, str]) -> int:
+    """Make `date`-typed columns loadable, in place. Returns the number of values fixed.
+
+    Scoped deliberately to the columns FlexiBee declares as `date`, which are
+    exactly the ones written with a DATE data type. Columns that fall back to
+    STRING because no metadata was available are left untouched, so the untyped
+    output path is unchanged.
+    """
+    date_columns = [col for col, typ in property_types.items() if typ == "date"]
+    if not date_columns:
+        return 0
+    fixed = 0
+    for record in records:
+        for col in date_columns:
+            value = record.get(col)
+            normalized = _normalize_date_value(value)
+            if normalized != value:
+                record[col] = normalized
+                fixed += 1
+    return fixed
+
+
+def _date_keys_needing_reload(primary_key: list[str], property_types: dict[str, str]) -> list[str]:
+    """Primary-key columns whose stored form changed when the offset was stripped.
+
+    Those rows no longer match what earlier runs wrote, so an incremental upsert
+    inserts them again instead of updating. Empty list = nothing to warn about.
+    """
+    return [col for col in primary_key if property_types.get(col) == "date"]
 
 
 def _build_typed_schema(
@@ -385,6 +439,21 @@ class Component(ComponentBase):
 
         incremental = cfg.incremental
         logging.info("Extracting evidence '%s' (load_type=%s)", cfg.evidence, cfg.load_type.value)
+        if date_from or date_to:
+            # Log the window that was actually applied, inclusive on both ends. An
+            # empty Date End resolves to the run time (documented as "Empty = up to
+            # now"), which means records dated ahead of the run are outside the
+            # window — worth being able to see in the job log rather than having to
+            # infer it from a row count.
+            logging.info(
+                "Applied filter: %s from %s to %s (both inclusive)%s",
+                date_field,
+                date_from.isoformat() if date_from else "(unbounded)",
+                date_to.isoformat() if date_to else "(unbounded)",
+                # The custom filter is AND-ed into the same WQL, so leaving it out
+                # here would report the effective filter as narrower than it is.
+                f", AND custom filter: {cfg.custom_filter}" if cfg.custom_filter else "",
+            )
 
         # Evidence metadata: properties.json is the source of truth for each column's
         # FlexiBee type and for the record key. We fetch it best-effort — if the call
@@ -414,6 +483,12 @@ class Component(ComponentBase):
             )
         except FlexiBeeClientError as exc:
             raise UserException(str(exc))
+
+        # Must run before the table is written: `date` columns arrive with a UTC
+        # offset that a DATE column cannot parse (see _normalize_date_columns).
+        fixed_dates = _normalize_date_columns(records, property_types)
+        if fixed_dates:
+            logging.debug("Normalized %d date value(s) to YYYY-MM-DD for evidence '%s'", fixed_dates, cfg.evidence)
 
         if not records and incremental:
             # An incremental (upsert) run that matched nothing new: leave the existing
@@ -490,6 +565,25 @@ class Component(ComponentBase):
                 "Incremental load without a primary key appends rows on every run; "
                 "re-fetched records will be duplicated in the table."
             )
+
+        # The one path where stripping the offset from date values can bite an
+        # existing table: if a `date` column is part of the primary key, its values
+        # no longer match the rows a previous run wrote with the offset attached, so
+        # an upsert inserts instead of updating and the table silently double-counts.
+        # Automatic key detection cannot get here (it only picks `id`-prefixed
+        # integer/numeric columns), so this requires a hand-set primary key — but if
+        # it does happen, say so loudly rather than letting it pass unnoticed.
+        if incremental and fixed_dates:
+            renormalized_keys = _date_keys_needing_reload(primary_key, property_types)
+            if renormalized_keys:
+                logging.warning(
+                    "Primary key column(s) %s hold date values whose UTC offset is now stripped "
+                    "(e.g. '2025-01-01+01:00' is written as '2025-01-01'). Rows written by earlier "
+                    "runs used the old form, so this incremental run will INSERT them again instead "
+                    "of updating them. Reload this table once as a full load (or drop it and re-run) "
+                    "to clear the duplicates.",
+                    ", ".join(renormalized_keys),
+                )
 
         table = self.create_out_table_definition(
             f"{cfg.evidence}.csv",
