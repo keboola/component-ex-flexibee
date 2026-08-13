@@ -3,6 +3,7 @@
 import csv
 import itertools
 import logging
+import re
 
 from keboola.component import ComponentBase, UserException
 from keboola.component.base import sync_action
@@ -45,6 +46,50 @@ _FLEXIBEE_TO_BASE_TYPE: dict[str, BaseType] = {
 # column is emitted when explicitly requested but carries no record identity, so
 # it must never become a primary key (every row would collapse into one).
 _PLACEHOLDER_ID_VALUES = frozenset({"", "-1", "0"})
+
+
+# FlexiBee returns whole-day `date` values with a UTC offset appended and no time
+# part — `2025-01-01+01:00` (`+02:00` under DST). A column declared DATE cannot
+# load that; Storage rejects the whole file with
+# `Date '2025-01-01+01:00' is not recognized`. The offset carries no information
+# for a whole-day value, so it is dropped and the plain calendar date is written.
+# `datetime` values are left alone: they are full ISO-8601 timestamps
+# (`2025-01-15T21:52:24.742+01:00`) that Storage accepts as-is.
+_DATE_WITH_OFFSET = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:[+-]\d{2}:?\d{2}|Z)$")
+
+
+def _normalize_date_value(value):
+    """Strip the trailing UTC offset from a whole-day FlexiBee `date` value.
+
+    Anything that is not a bare `YYYY-MM-DD` plus offset — an empty string, a
+    full timestamp, a non-string — is returned untouched.
+    """
+    if not isinstance(value, str):
+        return value
+    match = _DATE_WITH_OFFSET.match(value.strip())
+    return match.group(1) if match else value
+
+
+def _normalize_date_columns(records: list[dict], property_types: dict[str, str]) -> int:
+    """Make `date`-typed columns loadable, in place. Returns the number of values fixed.
+
+    Scoped deliberately to the columns FlexiBee declares as `date`, which are
+    exactly the ones written with a DATE data type. Columns that fall back to
+    STRING because no metadata was available are left untouched, so the untyped
+    output path is unchanged.
+    """
+    date_columns = [col for col, typ in property_types.items() if typ == "date"]
+    if not date_columns:
+        return 0
+    fixed = 0
+    for record in records:
+        for col in date_columns:
+            value = record.get(col)
+            normalized = _normalize_date_value(value)
+            if normalized != value:
+                record[col] = normalized
+                fixed += 1
+    return fixed
 
 
 def _build_typed_schema(
@@ -414,6 +459,12 @@ class Component(ComponentBase):
             )
         except FlexiBeeClientError as exc:
             raise UserException(str(exc))
+
+        # Must run before the table is written: `date` columns arrive with a UTC
+        # offset that a DATE column cannot parse (see _normalize_date_columns).
+        fixed_dates = _normalize_date_columns(records, property_types)
+        if fixed_dates:
+            logging.debug("Normalized %d date value(s) to YYYY-MM-DD for evidence '%s'", fixed_dates, cfg.evidence)
 
         if not records and incremental:
             # An incremental (upsert) run that matched nothing new: leave the existing
