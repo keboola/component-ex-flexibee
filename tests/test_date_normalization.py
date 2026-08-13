@@ -8,7 +8,7 @@ Storage rejects the entire file:
     Row 3, column "..."["datSplat":9]
 """
 
-from component import _normalize_date_columns, _normalize_date_value
+from component import _date_keys_needing_reload, _normalize_date_columns, _normalize_date_value
 
 # Shapes taken from a live `ucetni-denik` record: `date` columns carry an offset
 # and no time part, `datetime` columns are full ISO-8601 timestamps.
@@ -81,3 +81,29 @@ def test_missing_column_is_not_invented():
     records = [{"idUcetniDenik": "1"}]
     assert _normalize_date_columns(records, _UCETNI_DENIK_TYPES) == 0
     assert records == [{"idUcetniDenik": "1"}]
+
+
+def test_date_primary_key_is_flagged_for_reload():
+    """A `date` column in the primary key means earlier rows no longer match.
+
+    Stripping the offset changes the key value, so an incremental upsert inserts
+    instead of updating and the table silently double-counts. Automatic key
+    detection cannot produce this (it only picks `id`-prefixed integer/numeric
+    columns), but a hand-set primary key can.
+    """
+    # Hand-set date primary key -> must be flagged.
+    assert _date_keys_needing_reload(["datUcto"], _UCETNI_DENIK_TYPES) == ["datUcto"]
+    # Mixed key: only the date part is affected.
+    assert _date_keys_needing_reload(["idUcetniDenik", "datUcto"], _UCETNI_DENIK_TYPES) == ["datUcto"]
+
+
+def test_normal_primary_keys_are_not_flagged():
+    """The keys auto-detection actually produces must never trip the warning."""
+    assert _date_keys_needing_reload(["idUcetniDenik"], _UCETNI_DENIK_TYPES) == []
+    # A datetime key keeps its offset, so its stored form is unchanged.
+    assert _date_keys_needing_reload(["lastUpdate"], _UCETNI_DENIK_TYPES) == []
+    # A string column is untouched by normalization.
+    assert _date_keys_needing_reload(["popis"], _UCETNI_DENIK_TYPES) == []
+    # No key at all, and no metadata at all.
+    assert _date_keys_needing_reload([], _UCETNI_DENIK_TYPES) == []
+    assert _date_keys_needing_reload(["datUcto"], {}) == []

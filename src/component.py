@@ -92,6 +92,15 @@ def _normalize_date_columns(records: list[dict], property_types: dict[str, str])
     return fixed
 
 
+def _date_keys_needing_reload(primary_key: list[str], property_types: dict[str, str]) -> list[str]:
+    """Primary-key columns whose stored form changed when the offset was stripped.
+
+    Those rows no longer match what earlier runs wrote, so an incremental upsert
+    inserts them again instead of updating. Empty list = nothing to warn about.
+    """
+    return [col for col in primary_key if property_types.get(col) == "date"]
+
+
 def _build_typed_schema(
     columns: list[str],
     property_types: dict[str, str],
@@ -553,6 +562,25 @@ class Component(ComponentBase):
                 "Incremental load without a primary key appends rows on every run; "
                 "re-fetched records will be duplicated in the table."
             )
+
+        # The one path where stripping the offset from date values can bite an
+        # existing table: if a `date` column is part of the primary key, its values
+        # no longer match the rows a previous run wrote with the offset attached, so
+        # an upsert inserts instead of updating and the table silently double-counts.
+        # Automatic key detection cannot get here (it only picks `id`-prefixed
+        # integer/numeric columns), so this requires a hand-set primary key — but if
+        # it does happen, say so loudly rather than letting it pass unnoticed.
+        if incremental and fixed_dates:
+            renormalized_keys = _date_keys_needing_reload(primary_key, property_types)
+            if renormalized_keys:
+                logging.warning(
+                    "Primary key column(s) %s hold date values whose UTC offset is now stripped "
+                    "(e.g. '2025-01-01+01:00' is written as '2025-01-01'). Rows written by earlier "
+                    "runs used the old form, so this incremental run will INSERT them again instead "
+                    "of updating them. Reload this table once as a full load (or drop it and re-run) "
+                    "to clear the duplicates.",
+                    ", ".join(renormalized_keys),
+                )
 
         table = self.create_out_table_definition(
             f"{cfg.evidence}.csv",
