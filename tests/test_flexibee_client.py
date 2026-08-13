@@ -37,13 +37,13 @@ def test_build_date_wql_both_bounds():
         datetime(2026, 5, 1, 0, 0, 0),
         datetime(2026, 5, 27, 23, 59, 59),
     )
-    assert wql == ("lastUpdate gt '2026-05-01T00:00:00+00:00' and lastUpdate lt '2026-05-27T23:59:59+00:00'")
+    assert wql == ("lastUpdate gte '2026-05-01T00:00:00+00:00' and lastUpdate lte '2026-05-27T23:59:59+00:00'")
 
 
 def test_build_date_wql_from_only():
     c = _client()
     wql = c.build_date_wql("lastUpdate", datetime(2026, 5, 1, 0, 0, 0), None)
-    assert wql == "lastUpdate gt '2026-05-01T00:00:00+00:00'"
+    assert wql == "lastUpdate gte '2026-05-01T00:00:00+00:00'"
 
 
 def test_build_date_wql_none_returns_none():
@@ -55,7 +55,7 @@ def test_build_date_wql_honours_custom_field():
     # The window column is configurable (the "Date field" picker), not hardcoded.
     c = _client()
     wql = c.build_date_wql("datVyst", datetime(2026, 5, 1, 0, 0, 0), None)
-    assert wql == "datVyst gt '2026-05-01T00:00:00+00:00'"
+    assert wql == "datVyst gte '2026-05-01T00:00:00+00:00'"
 
 
 def test_flatten_record_reference_fields():
@@ -277,3 +277,67 @@ def test_test_connection_raises_on_http_error():
         assert "connect" in str(e).lower() or "401" in str(e)
     else:
         raise AssertionError("expected FlexiBeeClientError")
+
+
+def test_build_date_wql_bounds_are_inclusive():
+    """Regression [SUPPORT-17334]: the window must include records ON the bounds.
+
+    The Date Start / Date End fields read as "from this date" / "to this date", so
+    a record dated exactly on a bound belongs in the result. The exclusive
+    `gt` / `lt` this used to emit dropped them — on accounting evidences that
+    silently lost the whole batch of entries dated the first day of the period.
+    """
+    c = _client()
+    wql = c.build_date_wql(
+        "datUcto",
+        datetime(2025, 1, 1, 0, 0, 0),
+        datetime(2025, 12, 31, 23, 59, 59),
+    )
+    assert wql == ("datUcto gte '2025-01-01T00:00:00+00:00' and datUcto lte '2025-12-31T23:59:59+00:00'")
+    # The exclusive operators must not come back.
+    assert " gt " not in wql
+    assert " lt " not in wql
+
+
+def test_build_date_wql_uses_operators_the_api_accepts():
+    """ABRA Flexi accepts `gte` / `lte`; the short `ge` / `le` forms are rejected."""
+    c = _client()
+    wql = c.build_date_wql("lastUpdate", datetime(2026, 5, 1), datetime(2026, 5, 2))
+    assert " ge " not in wql
+    assert " le " not in wql
+    assert "gte" in wql and "lte" in wql
+
+
+def test_rate_limit_and_transient_statuses_are_retried():
+    """Regression [SUPPORT-17334]: a throttled request must be retried, not surfaced.
+
+    429 responses from the customer's instance were failing the column / date-field
+    sync actions outright because 429 was absent from the retry list.
+    """
+    c = _client()
+    assert 429 in c._http.status_forcelist
+    assert 408 in c._http.status_forcelist
+    # The pre-existing transient statuses stay covered.
+    for status in (500, 502, 503, 504):
+        assert status in c._http.status_forcelist
+    assert c._http.max_retries == FlexiBeeClient._MAX_RETRIES
+
+
+def test_rate_limit_error_message_explains_throttling():
+    """A 429 that outlives the retries gets an actionable explanation, not a bare code."""
+    import requests
+
+    response = mock.Mock(status_code=429)
+    exc = requests.HTTPError("429 Client Error: Too Many Requests for url: https://example.invalid", response=response)
+
+    c = _client()
+    with mock.patch.object(c._http, "get", side_effect=exc):
+        try:
+            c.get_evidence_schema("ucetni-denik")
+        except FlexiBeeClientError as err:
+            message = str(err)
+        else:
+            raise AssertionError("expected FlexiBeeClientError")
+
+    assert "rate limiting" in message
+    assert "ucetni-denik" in message

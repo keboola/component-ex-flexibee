@@ -28,6 +28,26 @@ def looks_like_key_column(name: str) -> bool:
     return name == "id" or (name.startswith("id") and len(name) > 2 and name[2].isupper())
 
 
+def _describe_request_error(exc: Exception) -> str:
+    """Render a failed request for the user, with a hint when it is rate limiting.
+
+    A bare ``429 Client Error: Too Many Requests`` tells the user nothing they can
+    act on. The retry schedule already rides out short bursts, so a 429 reaching
+    this point means the instance is throttling harder than that — which is a
+    property of the ABRA Flexi instance, not of the configuration.
+    """
+    message = str(exc)
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status == 429 or "429" in message:
+        message += (
+            " — the ABRA Flexi instance is rate limiting this client. It was retried "
+            f"{FlexiBeeClient._MAX_RETRIES} times and still refused. Retry in a few minutes, "
+            "and avoid refreshing several configuration rows at the same time."
+        )
+    return message
+
+
 @dataclass(frozen=True)
 class EvidenceSchema:
     """Column metadata of one evidence, read from ``/properties.json``.
@@ -83,6 +103,25 @@ class FlexiBeeClient:
     # run environment's network).
     _HTTP_TIMEOUT = (10, 60)
 
+    # Statuses worth another attempt. 429 (Too Many Requests) and 408 (Request
+    # Timeout) sit alongside the 5xx family: ABRA Flexi rate-limits per instance,
+    # so a burst of concurrent calls — several config rows refreshing their column
+    # / date-field pickers at once, or a run overlapping a sync action — gets one
+    # or more requests rejected even though the instance is healthy. Without 429
+    # here a single throttled response failed the whole call, which surfaced in
+    # the UI as "Could not list date fields of evidence '<x>': ... 429 Too Many
+    # Requests" and made evidence pickers unusable on busy instances.
+    _RETRY_STATUSES = (408, 429, 500, 502, 503, 504)
+
+    # 5 attempts with a 0.5 backoff factor => waits of ~0, 1, 2, 4, 8 s (~15 s of
+    # retrying in the worst case). Deliberately bounded: sync actions must still
+    # answer the UI well inside its timeout, so this rides out a short throttling
+    # burst without turning a genuinely rate-limited instance into a hang.
+    # urllib3's Retry honours a server-sent `Retry-After` header in preference to
+    # the backoff schedule.
+    _MAX_RETRIES = 5
+    _BACKOFF_FACTOR = 0.5
+
     def __init__(
         self,
         base_url: str,
@@ -105,9 +144,9 @@ class FlexiBeeClient:
         self._http = HttpClient(
             base_url=f"{self.base_url}/",
             auth=(self.username, self.password),
-            max_retries=3,
-            backoff_factor=0.5,
-            status_forcelist=(500, 502, 503, 504),
+            max_retries=self._MAX_RETRIES,
+            backoff_factor=self._BACKOFF_FACTOR,
+            status_forcelist=self._RETRY_STATUSES,
         )
 
         # Patch the HttpClient instance to mount HostHeaderSSLAdapter when we
@@ -162,18 +201,28 @@ class FlexiBeeClient:
         date_from: datetime | None,
         date_to: datetime | None,
     ) -> str | None:
-        """Build a WQL window over `field`. Returns None when both bounds are absent.
+        """Build an **inclusive** WQL window over `field`. Returns None when both bounds are absent.
 
         `field` is the date/datetime column the window applies to, e.g.
-        `lastUpdate`. Uses `gt` / `lt` (the API rejects
-        `ge` / `le`) and full ISO timestamps with offset (the API rejects date-only
-        values).
+        `lastUpdate`. Uses `gte` / `lte` and full ISO timestamps with offset (the
+        API rejects date-only values).
+
+        The bounds must be inclusive: Date Start / Date End are presented to the
+        user as "from this date" / "to this date", so a record falling exactly on
+        a bound belongs in the result. The exclusive `gt` / `lt` used previously
+        silently dropped every record sitting on the boundary — most visibly on
+        accounting evidences, where a whole batch of entries shares the first day
+        of the period (opening entries dated 1 January).
+
+        Note the operator spelling: ABRA Flexi accepts `gte` / `lte` (or the
+        symbolic `>=` / `<=`), *not* `ge` / `le` — the short forms are rejected,
+        which is why this used to fall back to the exclusive operators.
         """
         clauses: list[str] = []
         if date_from is not None:
-            clauses.append(f"{field} gt '{date_from.strftime(self._WQL_TS_FORMAT)}'")
+            clauses.append(f"{field} gte '{date_from.strftime(self._WQL_TS_FORMAT)}'")
         if date_to is not None:
-            clauses.append(f"{field} lt '{date_to.strftime(self._WQL_TS_FORMAT)}'")
+            clauses.append(f"{field} lte '{date_to.strftime(self._WQL_TS_FORMAT)}'")
         if not clauses:
             return None
         return " and ".join(clauses)
@@ -224,7 +273,9 @@ class FlexiBeeClient:
                     timeout=self._HTTP_TIMEOUT,
                 )
             except requests.RequestException as exc:
-                raise FlexiBeeClientError(f"Request to evidence '{evidence}' failed: {exc}") from exc
+                raise FlexiBeeClientError(
+                    f"Request to evidence '{evidence}' failed: {_describe_request_error(exc)}"
+                ) from exc
             body = data.get("winstrom", {})
             page = body.get(evidence, [])
             if not page:
@@ -252,7 +303,9 @@ class FlexiBeeClient:
                 timeout=self._HTTP_TIMEOUT,
             )
         except requests.RequestException as exc:
-            raise FlexiBeeClientError(f"Could not fetch properties for evidence '{evidence}': {exc}") from exc
+            raise FlexiBeeClientError(
+                f"Could not fetch properties for evidence '{evidence}': {_describe_request_error(exc)}"
+            ) from exc
         properties = data.get("properties", {}).get("property", [])
         if isinstance(properties, dict):
             properties = [properties]
@@ -290,7 +343,7 @@ class FlexiBeeClient:
                 timeout=self._HTTP_TIMEOUT,
             )
         except requests.RequestException as exc:
-            raise FlexiBeeClientError(f"Could not list evidences: {exc}") from exc
+            raise FlexiBeeClientError(f"Could not list evidences: {_describe_request_error(exc)}") from exc
         evidences = data.get("evidences", {}).get("evidence", [])
         return [(e.get("evidencePath", ""), e.get("evidenceName", "")) for e in evidences]
 
