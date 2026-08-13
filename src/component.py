@@ -430,6 +430,18 @@ class Component(ComponentBase):
 
         incremental = cfg.incremental
         logging.info("Extracting evidence '%s' (load_type=%s)", cfg.evidence, cfg.load_type.value)
+        if date_from or date_to:
+            # Log the window that was actually applied, inclusive on both ends. An
+            # empty Date End resolves to the run time (documented as "Empty = up to
+            # now"), which means records dated ahead of the run are outside the
+            # window — worth being able to see in the job log rather than having to
+            # infer it from a row count.
+            logging.info(
+                "Applied filter: %s from %s to %s (both inclusive)",
+                date_field,
+                date_from.isoformat() if date_from else "(unbounded)",
+                date_to.isoformat() if date_to else "(unbounded)",
+            )
 
         # Evidence metadata: properties.json is the source of truth for each column's
         # FlexiBee type and for the record key. We fetch it best-effort — if the call

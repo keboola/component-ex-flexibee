@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import types
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import requests
 from keboola.http_client import HttpClient
+from requests.adapters import HTTPAdapter
 from requests_toolbelt.adapters.host_header_ssl import HostHeaderSSLAdapter
+from urllib3.util.retry import Retry
 
 
 class FlexiBeeClientError(Exception):
@@ -17,6 +20,37 @@ class FlexiBeeClientError(Exception):
 
 # FlexiBee property types that can hold a record identifier.
 _KEY_PROPERTY_TYPES = frozenset({"integer", "numeric"})
+
+# Statuses worth another attempt. 429 (Too Many Requests) and 408 (Request Timeout)
+# sit alongside the 5xx family: ABRA Flexi rate-limits per instance, so a burst of
+# concurrent calls — several config rows refreshing their column / date-field
+# pickers at once, or a run overlapping a sync action — gets one or more requests
+# rejected even though the instance is healthy. Without 429 here a single throttled
+# response failed the whole call, which surfaced in the UI as "Could not list date
+# fields of evidence '<x>': ... 429 Too Many Requests".
+_FB_RETRY_STATUSES = (408, 429, 500, 502, 503, 504)
+
+# Retries are split by failure kind on purpose.
+#
+# Status retries (throttling, transient 5xx) get 5 attempts: a rate-limit burst is
+# short and worth riding out. Connect/read retries stay at 3 — a host that is
+# unreachable from the run environment should fail fast, and each attempt already
+# costs up to the connect timeout below, so raising this only makes a dead host
+# take longer to report.
+_FB_STATUS_RETRIES = 5
+_FB_CONNECT_RETRIES = 3
+
+# Backoff waits: ~0, 1, 2, 4, 8 s => ~15 s of retrying in the worst case.
+_FB_BACKOFF_FACTOR = 0.5
+_FB_BACKOFF_MAX = 8
+
+# Cap on a server-sent `Retry-After`. urllib3 honours that header in preference to
+# the backoff schedule and by default allows it up to 6 hours (21600 s), which
+# would let one throttled response hang a sync action long past the UI's patience.
+# Capped low: if the instance wants minutes, the retries are better spent quickly
+# and the user told to come back later (see `_describe_request_error`), so the
+# whole retry sequence stays bounded at roughly 20 s.
+_FB_RETRY_AFTER_MAX = 4
 
 
 def looks_like_key_column(name: str) -> bool:
@@ -39,10 +73,20 @@ def _describe_request_error(exc: Exception) -> str:
     message = str(exc)
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
-    if status == 429 or "429" in message:
+    # Two distinct shapes reach here, hence two checks:
+    #   * a 429 that was never retried surfaces as requests.HTTPError, which
+    #     carries `.response` and renders as "429 Client Error: ...";
+    #   * a 429 that exhausted the retries surfaces as requests.RetryError, which
+    #     has NO `.response` — the signal only survives in urllib3's message text
+    #     ("Max retries exceeded ... too many 429 error responses").
+    # Both patterns are matched literally rather than testing `"429" in message`,
+    # because the message embeds the request URL and would false-positive on any
+    # unrelated failure whose URL or identifiers happen to contain "429".
+    is_rate_limited = status == 429 or "429 Client Error" in message or "too many 429" in message
+    if is_rate_limited:
         message += (
             " — the ABRA Flexi instance is rate limiting this client. It was retried "
-            f"{FlexiBeeClient._MAX_RETRIES} times and still refused. Retry in a few minutes, "
+            f"{_FB_STATUS_RETRIES} times and still refused. Retry in a few minutes, "
             "and avoid refreshing several configuration rows at the same time."
         )
     return message
@@ -103,25 +147,6 @@ class FlexiBeeClient:
     # run environment's network).
     _HTTP_TIMEOUT = (10, 60)
 
-    # Statuses worth another attempt. 429 (Too Many Requests) and 408 (Request
-    # Timeout) sit alongside the 5xx family: ABRA Flexi rate-limits per instance,
-    # so a burst of concurrent calls — several config rows refreshing their column
-    # / date-field pickers at once, or a run overlapping a sync action — gets one
-    # or more requests rejected even though the instance is healthy. Without 429
-    # here a single throttled response failed the whole call, which surfaced in
-    # the UI as "Could not list date fields of evidence '<x>': ... 429 Too Many
-    # Requests" and made evidence pickers unusable on busy instances.
-    _RETRY_STATUSES = (408, 429, 500, 502, 503, 504)
-
-    # 5 attempts with a 0.5 backoff factor => waits of ~0, 1, 2, 4, 8 s (~15 s of
-    # retrying in the worst case). Deliberately bounded: sync actions must still
-    # answer the UI well inside its timeout, so this rides out a short throttling
-    # burst without turning a genuinely rate-limited instance into a hang.
-    # urllib3's Retry honours a server-sent `Retry-After` header in preference to
-    # the backoff schedule.
-    _MAX_RETRIES = 5
-    _BACKOFF_FACTOR = 0.5
-
     def __init__(
         self,
         base_url: str,
@@ -144,32 +169,57 @@ class FlexiBeeClient:
         self._http = HttpClient(
             base_url=f"{self.base_url}/",
             auth=(self.username, self.password),
-            max_retries=self._MAX_RETRIES,
-            backoff_factor=self._BACKOFF_FACTOR,
-            status_forcelist=self._RETRY_STATUSES,
+            max_retries=_FB_STATUS_RETRIES,
+            backoff_factor=_FB_BACKOFF_FACTOR,
+            status_forcelist=_FB_RETRY_STATUSES,
         )
 
-        # Patch the HttpClient instance to mount HostHeaderSSLAdapter when we
-        # are in tunnel+ssl mode.  HttpClient creates a fresh Session per
-        # request inside _request_raw → _requests_retry_session, so we cannot
-        # pre-mount on a stored session.  Replacing the method on *this
-        # instance only* (not the class) keeps the change fully scoped.
-        if tunnel_original_host and ssl_verify:
-            _original_rrs = self._http._requests_retry_session
+        # HttpClient creates a fresh Session per request inside _request_raw →
+        # _requests_retry_session, so we cannot pre-mount anything on a stored
+        # session. Replacing the method on *this instance only* (not the class)
+        # keeps the change fully scoped. Two reasons to replace it:
+        #
+        # 1. HttpClient builds its own urllib3 Retry from max_retries /
+        #    backoff_factor / status_forcelist and exposes no way to bound
+        #    `Retry-After` or to separate connect from status retries. We need
+        #    both (see the retry constants above), so we install our own Retry.
+        # 2. In tunnel+ssl mode the https:// adapter must be one that honours the
+        #    Host header for hostname verification (RFC 6066 SNI + cert CN),
+        #    because the TCP connection goes to 127.0.0.1 while the certificate
+        #    is issued for the real host.
+        use_host_header_adapter = bool(tunnel_original_host) and ssl_verify
 
-            def _patched_rrs(session=None):
-                # Let the original method build and configure the session
-                # (attaches the retry HTTPAdapter to http:// and https://).
-                s = _original_rrs(session=session)
-                # Replace the plain https:// adapter with one that honours the
-                # Host header for hostname verification (RFC 6066 SNI + cert CN).
-                s.mount("https://", HostHeaderSSLAdapter())
-                return s
+        def _patched_rrs(_self, session=None):
+            s = session or requests.Session()
+            adapter = HTTPAdapter(max_retries=self._build_retry())
+            s.mount("http://", adapter)
+            if use_host_header_adapter:
+                s.mount("https://", HostHeaderSSLAdapter(max_retries=self._build_retry()))
+            else:
+                s.mount("https://", adapter)
+            return s
 
-            # Bind the patched version to the instance (not the class).
-            import types
+        self._http._requests_retry_session = types.MethodType(_patched_rrs, self._http)
 
-            self._http._requests_retry_session = types.MethodType(_patched_rrs, self._http)
+    @staticmethod
+    def _build_retry() -> Retry:
+        """Build the urllib3 retry policy shared by every adapter we mount.
+
+        A fresh instance per adapter: urllib3 treats a Retry as immutable and
+        derives new ones as attempts are consumed, so sharing one is harmless,
+        but constructing per adapter keeps that assumption out of the picture.
+        """
+        return Retry(
+            total=_FB_STATUS_RETRIES,
+            connect=_FB_CONNECT_RETRIES,
+            read=_FB_CONNECT_RETRIES,
+            status=_FB_STATUS_RETRIES,
+            status_forcelist=_FB_RETRY_STATUSES,
+            backoff_factor=_FB_BACKOFF_FACTOR,
+            backoff_max=_FB_BACKOFF_MAX,
+            respect_retry_after_header=True,
+            retry_after_max=_FB_RETRY_AFTER_MAX,
+        )
 
     def _tunnel_headers(self) -> dict[str, str] | None:
         """Return ``{"Host": original_host}`` when a tunnel is active, else ``None``.

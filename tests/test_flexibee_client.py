@@ -1,6 +1,8 @@
 from datetime import datetime
 from unittest import mock
 
+from urllib3.util.retry import Retry
+
 from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
 
 
@@ -311,16 +313,52 @@ def test_build_date_wql_uses_operators_the_api_accepts():
 def test_rate_limit_and_transient_statuses_are_retried():
     """Regression [SUPPORT-17334]: a throttled request must be retried, not surfaced.
 
-    429 responses from the customer's instance were failing the column / date-field
-    sync actions outright because 429 was absent from the retry list.
+    429 responses were failing the column / date-field sync actions outright
+    because 429 was absent from the retry list.
     """
-    c = _client()
-    assert 429 in c._http.status_forcelist
-    assert 408 in c._http.status_forcelist
+    retry = FlexiBeeClient._build_retry()
+    assert 429 in retry.status_forcelist
+    assert 408 in retry.status_forcelist
     # The pre-existing transient statuses stay covered.
     for status in (500, 502, 503, 504):
-        assert status in c._http.status_forcelist
-    assert c._http.max_retries == FlexiBeeClient._MAX_RETRIES
+        assert status in retry.status_forcelist
+
+
+def test_retry_after_is_bounded():
+    """A server-sent `Retry-After` must not be able to hang a sync action.
+
+    urllib3 honours `Retry-After` in preference to the backoff schedule and allows
+    it up to 6 hours by default, so adding 429 to the forcelist would otherwise let
+    one throttled response stall the UI far past its patience.
+    """
+    retry = FlexiBeeClient._build_retry()
+    assert retry.respect_retry_after_header is True
+    assert retry.retry_after_max == 4
+    assert retry.retry_after_max < Retry().retry_after_max  # well under urllib3's 21600 s default
+    # A generous server value is clamped, not obeyed.
+    assert retry.parse_retry_after("600") == 4
+    assert retry.parse_retry_after("2") == 2
+
+
+def test_connect_retries_stay_lower_than_status_retries():
+    """An unreachable host must still fail fast; only throttling gets the extra attempts."""
+    retry = FlexiBeeClient._build_retry()
+    assert retry.status == 5
+    assert retry.connect == 3
+    assert retry.read == 3
+    assert retry.backoff_factor == 0.5
+    assert retry.backoff_max == 8
+
+
+def test_retry_policy_is_installed_on_both_schemes():
+    """The custom Retry must actually reach the session HttpClient builds per request."""
+    c = _client()
+    session = c._http._requests_retry_session()
+    for scheme in ("http://", "https://"):
+        retry = session.get_adapter(scheme).max_retries
+        assert retry.status == 5, scheme
+        assert 429 in retry.status_forcelist, scheme
+        assert retry.retry_after_max == 4, scheme
 
 
 def test_rate_limit_error_message_explains_throttling():
@@ -341,3 +379,55 @@ def test_rate_limit_error_message_explains_throttling():
 
     assert "rate limiting" in message
     assert "ucetni-denik" in message
+
+
+def test_rate_limit_hint_not_added_to_unrelated_errors():
+    """A URL that merely contains "429" must not be reported as rate limiting.
+
+    The rendered message embeds the request URL, so a substring test on "429"
+    would mislabel any unrelated failure whose path or identifiers contain it.
+    """
+    import requests
+
+    from client.flexibee_client import _describe_request_error
+
+    response = mock.Mock(status_code=500)
+    exc = requests.HTTPError(
+        "500 Server Error: Internal Server Error for url: "
+        "https://demo.flexibee.eu/c/demo/faktura-vydana/(id%20eq%20429).json",
+        response=response,
+    )
+    assert "rate limiting" not in _describe_request_error(exc)
+
+
+def test_rate_limit_hint_added_when_retries_are_exhausted():
+    """requests.RetryError carries no `.response`; the signal is only in the text."""
+    import requests
+
+    from client.flexibee_client import _describe_request_error
+
+    exc = requests.exceptions.RetryError(
+        "HTTPSConnectionPool(host='demo.flexibee.eu', port=443): Max retries exceeded "
+        "with url: /c/demo/ucetni-denik/properties.json (Caused by "
+        "ResponseError('too many 429 error responses'))"
+    )
+    assert getattr(exc, "response", None) is None
+    assert "rate limiting" in _describe_request_error(exc)
+
+
+def test_date_typed_window_field_keeps_the_timestamp_format():
+    """A `date`-typed window column (the reported config used `datUcto`) is windowed
+    with the same full-timestamp value format as a `datetime` column.
+
+    Verified against a live instance: a record stored as `2019-12-23+01:00` IS
+    matched by `datVyst gte '2019-12-23T00:00:00+00:00' and datVyst lte
+    '2019-12-23T00:00:00+00:00'` (same 4 rows as `eq`), i.e. the server compares
+    the calendar date and the hardcoded `+00:00` offset does not shift a whole-day
+    value out of the window on an instance running ahead of UTC. The API rejects
+    date-only values, so the time component must stay.
+    """
+    c = _client()
+    wql = c.build_date_wql("datUcto", datetime(2025, 1, 1, 0, 0, 0), datetime(2025, 1, 1, 0, 0, 0))
+    assert wql == ("datUcto gte '2025-01-01T00:00:00+00:00' and datUcto lte '2025-01-01T00:00:00+00:00'")
+    # Date-only values are rejected by the API — the time part must not be dropped.
+    assert "T00:00:00" in wql

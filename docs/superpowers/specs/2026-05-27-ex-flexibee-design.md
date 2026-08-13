@@ -112,8 +112,12 @@ The client MUST build filters as path segments `(<expr>)` and URL-encode them. T
 test asserting that a filtered request returns fewer rows than an unfiltered one, to guard against
 regressing to the query-string form.
 
-- **WQL operators (verified):** use `gt` / `lt` — `ge` / `le` are **rejected** with
-  "Špatný formát WQL dotazu" (bad WQL format). Range = `(lastUpdate gt '<from>' and lastUpdate lt '<to>')`.
+- **WQL operators (verified):** use `gte` / `lte` — the bounds are inclusive, so a record
+  dated exactly on a bound is returned. The short forms `ge` / `le` are **rejected** with
+  "Špatný formát WQL dotazu" (bad WQL format); the spelling is `gte` / `lte` (the symbolic
+  `>=` / `<=` also work but need escaping inside the URL path). Do **not** fall back to the
+  exclusive `gt` / `lt`: that silently drops every record sitting on the boundary date
+  (SUPPORT-17334). Range = `(lastUpdate gte '<from>' and lastUpdate lte '<to>')`.
 - **Timestamp format (verified):** ISO 8601 **with offset and time component** is required;
   a date-only value (`'2026-05-27'`) is rejected. Format as `%Y-%m-%dT%H:%M:%S+00:00` (UTC).
 - **Ordering:** `?order=lastUpdate@D` works (verified) if needed for diagnostics.
@@ -144,8 +148,8 @@ success/failure as a `UserException` on failure.
 | Field | Type | Req | Notes |
 |---|---|---|---|
 | `evidence` | string (enum) | ✅ | populated by `list_evidences` sync-action dropdown |
-| `date_from` | string | | relative (`"5 days ago"`, `"last 5 days"`) or absolute (`2026-01-01`); empty = all. Filters `lastUpdate ge`. |
-| `date_to` | string | | default now; filters `lastUpdate le` |
+| `date_from` | string | | relative (`"5 days ago"`, `"last 5 days"`) or absolute (`2026-01-01`); empty = all. Filters `<date_field> gte` (inclusive). |
+| `date_to` | string | | default now; filters `<date_field> lte` (inclusive) |
 | `detail` | string (enum) | | `full` (default) / `summary` / `custom` |
 | `custom_fields` | string | | shown when `detail=custom`; comma-separated field list |
 | `custom_filter` | string | | optional raw ABRA Flexi filter expression, AND-ed into the path filter (advanced) |
