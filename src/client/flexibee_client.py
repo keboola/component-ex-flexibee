@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import types
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -48,8 +47,12 @@ _FB_BACKOFF_MAX = 8
 # the backoff schedule and by default allows it up to 6 hours (21600 s), which
 # would let one throttled response hang a sync action long past the UI's patience.
 # Capped low: if the instance wants minutes, the retries are better spent quickly
-# and the user told to come back later (see `_describe_request_error`), so the
-# whole retry sequence stays bounded at roughly 20 s.
+# and the user told to come back later (see `_describe_request_error`).
+#
+# Measured worst cases for the *status* path (persistent 429): ~15 s with no
+# `Retry-After` (0/1/2/4/8), ~20 s when the server sends one (5 x the 4 s cap).
+# Note this bounds throttling only — a host that accepts the connection and then
+# stalls is bounded by the read timeout below (~4 x 60 s), not by these numbers.
 _FB_RETRY_AFTER_MAX = 4
 
 
@@ -166,17 +169,18 @@ class FlexiBeeClient:
         # connection goes to 127.0.0.1 (the local side of the SSH tunnel).
         self.tunnel_original_host = tunnel_original_host
 
+        # Retry settings are deliberately NOT passed here: the policy is installed
+        # below via _requests_retry_session and HttpClient's own retry arguments
+        # would be inert (and misleading, since `_http.max_retries` would then read
+        # as authoritative). `_build_retry` is the single source of truth.
         self._http = HttpClient(
             base_url=f"{self.base_url}/",
             auth=(self.username, self.password),
-            max_retries=_FB_STATUS_RETRIES,
-            backoff_factor=_FB_BACKOFF_FACTOR,
-            status_forcelist=_FB_RETRY_STATUSES,
         )
 
         # HttpClient creates a fresh Session per request inside _request_raw →
         # _requests_retry_session, so we cannot pre-mount anything on a stored
-        # session. Replacing the method on *this instance only* (not the class)
+        # session. Replacing the attribute on *this instance only* (not the class)
         # keeps the change fully scoped. Two reasons to replace it:
         #
         # 1. HttpClient builds its own urllib3 Retry from max_retries /
@@ -186,29 +190,42 @@ class FlexiBeeClient:
         # 2. In tunnel+ssl mode the https:// adapter must be one that honours the
         #    Host header for hostname verification (RFC 6066 SNI + cert CN),
         #    because the TCP connection goes to 127.0.0.1 while the certificate
-        #    is issued for the real host.
+        #    is issued for the real host. Note the adapter must carry the retry
+        #    policy too — mounting a bare HostHeaderSSLAdapter() would silently
+        #    give the tunnelled path max_retries=0, i.e. no retries at all.
         use_host_header_adapter = bool(tunnel_original_host) and ssl_verify
+        # Preserve the library's retryable-method set. urllib3's default omits POST
+        # and PATCH, so dropping this would silently disable retries for any
+        # non-idempotent call added later (every call site is a GET today).
+        allowed_methods = self._http.allowed_methods
 
-        def _patched_rrs(_self, session=None):
+        def _patched_rrs(session=None):
+            # MUST honour a session passed in by _request_raw: that is the one
+            # carrying the auth and headers it just set. Building a fresh session
+            # here instead would drop authentication on every request.
             s = session or requests.Session()
-            adapter = HTTPAdapter(max_retries=self._build_retry())
+            adapter = HTTPAdapter(max_retries=self._build_retry(allowed_methods))
             s.mount("http://", adapter)
             if use_host_header_adapter:
-                s.mount("https://", HostHeaderSSLAdapter(max_retries=self._build_retry()))
+                s.mount("https://", HostHeaderSSLAdapter(max_retries=self._build_retry(allowed_methods)))
             else:
                 s.mount("https://", adapter)
             return s
 
-        self._http._requests_retry_session = types.MethodType(_patched_rrs, self._http)
+        # A plain function on the instance, not a MethodType: instance attributes
+        # are not descriptors, so HttpClient's `self._requests_retry_session(...)`
+        # call passes only its own kwargs and no implicit self.
+        self._http._requests_retry_session = _patched_rrs
 
     @staticmethod
-    def _build_retry() -> Retry:
+    def _build_retry(allowed_methods=None) -> Retry:
         """Build the urllib3 retry policy shared by every adapter we mount.
 
         A fresh instance per adapter: urllib3 treats a Retry as immutable and
         derives new ones as attempts are consumed, so sharing one is harmless,
         but constructing per adapter keeps that assumption out of the picture.
         """
+        kwargs = {} if allowed_methods is None else {"allowed_methods": allowed_methods}
         return Retry(
             total=_FB_STATUS_RETRIES,
             connect=_FB_CONNECT_RETRIES,
@@ -219,6 +236,7 @@ class FlexiBeeClient:
             backoff_max=_FB_BACKOFF_MAX,
             respect_retry_after_header=True,
             retry_after_max=_FB_RETRY_AFTER_MAX,
+            **kwargs,
         )
 
     def _tunnel_headers(self) -> dict[str, str] | None:

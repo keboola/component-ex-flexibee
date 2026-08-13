@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest import mock
 
+import requests
 from urllib3.util.retry import Retry
 
 from client.flexibee_client import FlexiBeeClient, FlexiBeeClientError
@@ -431,3 +432,39 @@ def test_date_typed_window_field_keeps_the_timestamp_format():
     assert wql == ("datUcto gte '2025-01-01T00:00:00+00:00' and datUcto lte '2025-01-01T00:00:00+00:00'")
     # Date-only values are rejected by the API — the time part must not be dropped.
     assert "T00:00:00" in wql
+
+
+def test_retry_session_honours_the_session_it_is_given():
+    """The patched session builder MUST reuse the session handed to it.
+
+    HttpClient._request_raw creates a session, sets auth and headers on it, then
+    passes it into _requests_retry_session. Building a fresh session instead would
+    silently drop authentication on every request — and no functional test would
+    catch it, because the VCR matcher ignores headers and the recorded credentials
+    are sanitized out of the cassettes.
+    """
+    c = _client()
+    sentinel = requests.Session()
+    sentinel.auth = ("user", "secret")
+    sentinel.headers.update({"X-Marker": "kept"})
+
+    returned = c._http._requests_retry_session(session=sentinel)
+
+    assert returned is sentinel
+    assert returned.auth == ("user", "secret")
+    assert returned.headers["X-Marker"] == "kept"
+    # ...and it still got the retry policy mounted.
+    assert returned.get_adapter("https://").max_retries.status == 5
+
+
+def test_post_and_patch_stay_retryable():
+    """urllib3's default allowed_methods omits POST/PATCH; keboola's does not.
+
+    Every call site is a GET today, so this has no live effect — but silently
+    narrowing the retryable-method set would disable retries for the first
+    non-idempotent endpoint anyone adds.
+    """
+    c = _client()
+    retry = c._http._requests_retry_session().get_adapter("https://").max_retries
+    for method in ("GET", "POST", "PATCH"):
+        assert method in retry.allowed_methods, method

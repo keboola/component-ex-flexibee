@@ -446,10 +446,13 @@ class Component(ComponentBase):
             # window — worth being able to see in the job log rather than having to
             # infer it from a row count.
             logging.info(
-                "Applied filter: %s from %s to %s (both inclusive)",
+                "Applied filter: %s from %s to %s (both inclusive)%s",
                 date_field,
                 date_from.isoformat() if date_from else "(unbounded)",
                 date_to.isoformat() if date_to else "(unbounded)",
+                # The custom filter is AND-ed into the same WQL, so leaving it out
+                # here would report the effective filter as narrower than it is.
+                f", AND custom filter: {cfg.custom_filter}" if cfg.custom_filter else "",
             )
 
         # Evidence metadata: properties.json is the source of truth for each column's
