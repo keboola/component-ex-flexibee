@@ -72,6 +72,61 @@ def _build_typed_schema(
     return schema
 
 
+def _unreachable_count(total: int | None, reachable: int | None) -> int | None:
+    """How many records a date window can never return, from two counts.
+
+    `total` is every record (within the same non-date filter), `reachable` is those
+    whose window column holds a value. The difference is the records with an empty
+    window column, which no range predicate can match. Returns None when either
+    count is unavailable, so callers can stay silent instead of reporting a guess.
+    """
+    if total is None or reachable is None:
+        return None
+    return max(0, total - reachable)
+
+
+def _warn_unreachable_records(client: FlexiBeeClient, cfg: Configuration, date_field: str) -> int | None:
+    """Warn when records are invisible to the date window because the column is empty.
+
+    ABRA Flexi leaves `lastUpdate` unset on some records — a known quirk of the
+    source system rather than something the component can correct. Because the API
+    has no null test, such records cannot be brought into a windowed result at all;
+    the only way to extract them is a run with no Date Start. Silently returning
+    fewer rows than the evidence holds is the worst outcome, so the run says how
+    many records are affected and what to do about it.
+
+    Best-effort: two lightweight counting calls. Any failure is logged at debug and
+    the run continues — this is a diagnostic, never a reason to fail an extraction.
+    """
+    try:
+        presence = client.build_field_present_wql(date_field)
+        # The presence expression contains `or`, so it must stay parenthesized when
+        # AND-ed with the user's filter, or precedence would silently widen it.
+        reachable_wql = f"({presence}) and {cfg.custom_filter}" if cfg.custom_filter else presence
+        total = client.count_records(cfg.evidence, cfg.custom_filter or None)
+        reachable = client.count_records(cfg.evidence, reachable_wql)
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must never fail the run
+        logging.debug("Could not check for records with an empty '%s': %s", date_field, exc)
+        return None
+
+    unreachable = _unreachable_count(total, reachable)
+    if not unreachable:
+        return unreachable
+
+    logging.warning(
+        "%d of %d records in evidence '%s' have an empty '%s' and therefore CANNOT be returned by any "
+        "date window on that column — they are missing from this run's output. This is an ABRA Flexi "
+        "data quirk (the column is sometimes left unset) and the API offers no way to filter for empty "
+        "values. To extract them, clear Date Start to run without a window, or pick a Date field that is "
+        "always populated on this evidence.",
+        unreachable,
+        total,
+        cfg.evidence,
+        date_field,
+    )
+    return unreachable
+
+
 def _is_placeholder_column(column: str, records: list[dict]) -> bool:
     """True when every record carries a placeholder value in `column`."""
     return all(str(record.get(column, "")).strip() in _PLACEHOLDER_ID_VALUES for record in records)
@@ -385,6 +440,11 @@ class Component(ComponentBase):
 
         incremental = cfg.incremental
         logging.info("Extracting evidence '%s' (load_type=%s)", cfg.evidence, cfg.load_type.value)
+
+        # Only meaningful when a window is actually applied — without one every
+        # record is returned regardless of whether the date column is populated.
+        if window_wql:
+            _warn_unreachable_records(client, cfg, date_field)
 
         # Evidence metadata: properties.json is the source of truth for each column's
         # FlexiBee type and for the record key. We fetch it best-effort — if the call

@@ -178,6 +178,51 @@ class FlexiBeeClient:
             return None
         return " and ".join(clauses)
 
+    # Any timestamp far enough in the past that every real record sits on one side
+    # of it. Used only to express "this field holds a value" — see
+    # `build_field_present_wql`.
+    _WQL_PRESENCE_SENTINEL = "1900-01-01T00:00:00+00:00"
+
+    def build_field_present_wql(self, field: str) -> str:
+        """WQL matching every record whose `field` holds any value at all.
+
+        The API has no null test — `isempty` / `isnotempty` are rejected with
+        "Špatný formát WQL dotazu" — so presence is expressed as a range union that
+        covers the whole domain: a value is either at/after the sentinel or before
+        it. A record with an empty `field` satisfies neither (SQL null semantics),
+        which is exactly the point: this counts the reachable records.
+
+        Contains `or`, so callers combining it with another expression must keep it
+        parenthesized: `(<presence>) and <other>`.
+        """
+        return f"{field} gte '{self._WQL_PRESENCE_SENTINEL}' or {field} lt '{self._WQL_PRESENCE_SENTINEL}'"
+
+    def count_records(self, evidence: str, wql: str | None) -> int | None:
+        """Return how many records match `wql`, without fetching them.
+
+        Asks for a single row with `add-row-count`, so the response stays small
+        whatever the count. Returns None when the API omits `@rowCount` rather than
+        guessing a number.
+        """
+        endpoint = self.build_evidence_path(evidence, wql)
+        try:
+            data = self._http.get(
+                endpoint_path=endpoint,
+                params={"start": 0, "limit": 1, "add-row-count": "true"},
+                headers=self._tunnel_headers(),
+                verify=self.ssl_verify,
+                timeout=self._HTTP_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            raise FlexiBeeClientError(f"Could not count records of evidence '{evidence}': {exc}") from exc
+        raw = data.get("winstrom", {}).get("@rowCount")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
     @staticmethod
     def flatten_record(record: dict) -> dict:
         """Flatten one FlexiBee record into a flat dict of stringy columns.
