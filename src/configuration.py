@@ -186,16 +186,30 @@ class Configuration(BaseModel):
     def resolve_window(self) -> tuple[datetime | None, datetime | None]:
         """Resolve date_from/date_to strings into datetimes for the WQL window.
 
-        Empty `date_from` => no lower bound (None). Empty `date_to` defaults to "now".
-        Relative ("5 days ago") and absolute ("2026-05-01") strings are accepted.
+        Empty `date_from` => no lower bound (None).
+        Empty `date_to` => **no upper bound** (None), so future-dated records are
+        included. Relative ("5 days ago") and absolute ("2026-05-01") strings are
+        accepted; write "today" as Date End to stop at the current moment.
         """
         if not self.date_from:
             if self.date_to:
                 logging.warning("date_to is set but date_from is empty; ignoring date_to and extracting full history.")
             return None, None
-        date_to = self.date_to or "now"
+
+        # An empty Date End used to resolve to "now", which silently excluded every
+        # record dated ahead of the run — invisible to the user, who sees an empty
+        # field and reasonably reads it as "no limit" [SUPPORT-17334]. Documents are
+        # routinely future-dated (due dates, planned entries), so those rows just went
+        # missing. Empty now means unbounded; "today" expresses the old behaviour.
+        #
+        # parse_datetime_interval requires two ends, so the lower bound is resolved by
+        # pairing it with itself. That also keeps a *future* date_from valid — pairing
+        # it with "now" is rejected with "start_date cannot exceed end_date", even
+        # though "from 2030 onwards" is a perfectly sensible unbounded window.
+        upper = self.date_to or self.date_from
         try:
-            start, end = parse_datetime_interval(self.date_from, date_to)
+            start, end = parse_datetime_interval(self.date_from, upper)
         except Exception as exc:
-            raise UserException(f"Invalid date range: date_from='{self.date_from}', date_to='{date_to}': {exc}")
-        return start, end
+            shown = self.date_to or "(unbounded)"
+            raise UserException(f"Invalid date range: date_from='{self.date_from}', date_to='{shown}': {exc}")
+        return start, (end if self.date_to else None)

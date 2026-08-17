@@ -149,7 +149,7 @@ success/failure as a `UserException` on failure.
 |---|---|---|---|
 | `evidence` | string (enum) | ✅ | populated by `list_evidences` sync-action dropdown |
 | `date_from` | string | | relative (`"5 days ago"`, `"last 5 days"`) or absolute (`2026-01-01`); empty = all. Filters `<date_field> gte` (inclusive). |
-| `date_to` | string | | default now; filters `<date_field> lte` (inclusive) |
+| `date_to` | string | | empty = unbounded (future-dated records included); filters `<date_field> lte` (inclusive) |
 | `detail` | string (enum) | | `full` (default) / `summary` / `custom` |
 | `custom_fields` | string | | shown when `detail=custom`; comma-separated field list |
 | `custom_filter` | string | | optional raw ABRA Flexi filter expression, AND-ed into the path filter (advanced) |

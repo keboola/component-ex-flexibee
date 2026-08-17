@@ -62,7 +62,7 @@
       "title": "Date End",
       "description": "Upper bound of the date-field range.",
       "options": {
-        "tooltip": "Applied on every run. Accepts relative (`5 days ago`) or absolute (`2026-01-01`) values. Empty = up to now."
+        "tooltip": "Applied on every run. Accepts relative (`5 days ago`) or absolute (`2026-01-01`) values. **Empty = no upper bound**, so records dated in the future are included too. Write `today` to stop at the current moment instead."
       },
       "propertyOrder": 5
     },
