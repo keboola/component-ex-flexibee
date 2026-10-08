@@ -271,9 +271,7 @@ def test_summary_anchor_filtered_run_probes_unfiltered_and_ignores_narrow_record
     result = _summary_anchor_columns(cfg, client, "lastUpdate gt '2026-05-27T00:00:00+00:00'", narrow_records)
 
     assert result == ["a", "b", "c"]
-    assert client.calls == [
-        {"evidence": "faktura-vydana", "wql": None, "detail": "summary", "limit": cfg.limit}
-    ]
+    assert client.calls == [{"evidence": "faktura-vydana", "wql": None, "detail": "summary", "limit": cfg.limit}]
 
 
 def test_summary_anchor_probe_is_bounded_by_limit():
