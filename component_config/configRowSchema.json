@@ -81,7 +81,7 @@
     "custom_fields": {
       "type": "string",
       "title": "Custom fields",
-      "description": "Comma-separated field list (used when Detail level = custom)",
+      "description": "Comma-separated list of fields. For relation or enum labels, also add <field>_showAs, e.g. stredisko,stredisko_showAs",
       "propertyOrder": 7,
       "options": {
         "dependencies": {
