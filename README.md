@@ -36,13 +36,11 @@ If you need additional endpoints, please submit your request to
 Configuration
 =============
 
-Param 1
--------
-Details about parameter 1.
-
-Param 2
--------
-Details about parameter 2.
+Custom fields
+-------------
+Used when *Detail level* = *Custom*: only the listed fields are loaded. To also get the readable
+label of a relation or enum field, add `<field>_showAs` next to it, and `<field>_ref` for the link
+to a related record. Example: `kod,stredisko,stredisko_showAs,stavUhrK,stavUhrK_showAs`.
 
 Output
 ======
